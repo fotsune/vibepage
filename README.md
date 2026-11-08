@@ -43,6 +43,49 @@ python -m venv .venv
 
 ---
 
+## Docker
+
+Готовые `Dockerfile` и `docker-compose.yml`: в образе нет ни компилятора, ни pip, ни кэшей —
+только Python, Flask и код (~60 МБ).
+
+```sh
+docker compose up -d --build     # собрать и поднять на http://localhost:8080
+docker compose logs -f
+docker compose down
+```
+
+Папка `config/` монтируется с хоста (`./config:/app/config`), поэтому правка `*.toml`
+подхватывается на следующем же запросе — перезапуск контейнера не нужен. Скачанные
+`mdi:`/`sdi:`-иконки (`.icon-cache/`) тоже остаются на хосте.
+
+Что можно поменять снаружи (переменные окружения):
+
+| переменная | по умолчанию | что делает |
+|---|---|---|
+| `HOMEPAGE_PORT` | `8080` | порт на хосте (внутри контейнера всегда 8080) |
+| `HOMEPAGE_BIND` | `0.0.0.0` | адрес, на котором слушать снаружи |
+| `HOMEPAGE_CONFIG` | `/app/config/homepage.toml` | главный конфиг внутри контейнера |
+
+```sh
+HOMEPAGE_PORT=9000 HOMEPAGE_BIND=127.0.0.1 docker compose up -d
+```
+
+Контейнер работает под uid 1000 (пользователь `app`), чтобы `.icon-cache` в смонтированной
+папке не принадлежал root. Если на хосте uid другой — раскомментируйте `user:` в compose.
+Healthcheck ходит в `/healthz` стандартным питоном, поэтому curl/wget в образе не нужны.
+
+Без compose:
+
+```sh
+docker build -t homepage .
+docker run -d --name homepage -p 8080:8080 -v "$PWD/config:/app/config" homepage
+```
+
+Если конфиг лежит в другом месте — монтируйте его как есть: `-v /srv/homepage/config:/app/config:ro`.
+На чтение тоже работает (страница не сломается), просто кэш иконок не сохранится между запусками.
+
+---
+
 ## Конфиг
 
 Главный файл — `config/homepage.toml`. Из него же читается `system.config_path`: все `*.toml`
@@ -262,6 +305,9 @@ templates/          index.html, error.html
 static/             style.css (Dracula), app.js, favicon.svg
 config/             homepage.toml + conf.d/* + icons/
 tests/              unittest: парсер, раскладка, HTTP-поведение
+Dockerfile          образ: alpine + venv без pip, пользователь app (uid 1000)
+docker-compose.yml  запуск с маунтом ./config:/app/config
+.dockerignore       что не тащить в контекст сборки
 ```
 
 ---
