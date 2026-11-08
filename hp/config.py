@@ -6,7 +6,8 @@ bare strings, so files stay pleasant to write by hand.
 
 Sections
 --------
-``[system]``            global settings
+``[system]``            global settings: title, columns, paths
+``[header]``            the top bar: clock, search, icons, link mode
 ``[service:Name]``      one service card
 ``[group:Name]``        one group of services
 
@@ -33,6 +34,10 @@ SERVICE_KEYS = {"link", "alt", "name", "icon", "icon_link", "icon_color",
                 "desc", "group", "priority", "new_page"}
 GROUP_KEYS = {"name", "priority", "link", "color"}
 SYSTEM_KEYS = {"title", "icon_path", "config_path", "cols", "mobile_cols", "open_in_new_page"}
+HEADER_KEYS = {"show", "enabled", "header", "time", "time_format", "icon", "favicon", "search",
+               "link_mode", "main_alt"}
+LINK_MODES = {"auto": "auto", "main": "main", "link": "main", "primary": "main", "external": "main",
+              "alt": "alt", "alternate": "alt", "local": "alt"}
 
 URL_SCHEMES = ("http://", "https://", "//", "data:")
 
@@ -49,6 +54,19 @@ class System:
     cols: int = 3
     mobile_cols: int = 1
     open_in_new_page: bool = False
+
+
+@dataclass
+class Header:
+    """The top bar. Every switch is on by default; link_mode stays automatic."""
+
+    show: bool = True                 # вся шапка целиком
+    time: bool = True                # часы
+    time_format: int = 12            # 12 (AM/PM) или 24
+    search: bool = True              # строка поиска
+    icon: str | None = None          # логотип, путь относительно system.icon_path
+    favicon: str | None = None       # favicon, путь относительно system.icon_path
+    link_mode: str = "auto"          # auto | main | alt
 
 
 @dataclass
@@ -82,6 +100,7 @@ class Site:
     """Everything a request needs: settings, declared groups, services."""
 
     system: System = field(default_factory=System)
+    header: Header = field(default_factory=Header)
     groups: dict[str, Group] = field(default_factory=dict)   # keyed by casefolded name
     services: list[Service] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
@@ -191,11 +210,11 @@ def parse_file(path: str) -> tuple[list[dict], list[str]]:
                 continue
             kind = match.group(1).lower()
             name = (match.group(2) or "").strip().strip("'\"")
-            if kind not in ("system", "service", "group"):
+            if kind not in ("system", "header", "service", "group"):
                 errors.append(f"{os.path.basename(path)}:{lineno}: неизвестная секция [{kind}]")
                 current = None
                 continue
-            if kind != "system" and not name:
+            if kind not in ("system", "header") and not name:
                 errors.append(f"{os.path.basename(path)}:{lineno}: у секции [{kind}] нет имени")
                 current = None
                 continue
@@ -315,9 +334,46 @@ def _extra_files(main_path: str, dirs: list[str]) -> list[str]:
     return files
 
 
-def _apply_system(system: System, values: dict, source: str, where: str, warnings: list[str]) -> None:
+def _apply_header(header: Header, values: dict, where: str, warnings: list[str]) -> None:
+    for key, value in values.items():
+        if key not in HEADER_KEYS:
+            warnings.append(f"{where}: неизвестный ключ header.{key}")
+            continue
+        # main_alt — то же, что link_mode; enabled/header — то же, что show
+        name = {"enabled": "show", "header": "show", "main_alt": "link_mode"}.get(key, key)
+        if name == "show":
+            header.show = _as_bool(value, where, "header", warnings, header.show)
+        elif name == "time":
+            header.time = _as_bool(value, where, "time", warnings, header.time)
+        elif name == "search":
+            header.search = _as_bool(value, where, "search", warnings, header.search)
+        elif name == "time_format":
+            number = _as_int(value, where, "time_format", warnings, header.time_format)
+            if number not in (12, 24):
+                warnings.append(f"{where}: time_format бывает 12 или 24, получено {value!r} — беру 12")
+                number = 12
+            header.time_format = number
+        elif name == "icon":
+            header.icon = _as_str(value)
+        elif name == "favicon":
+            header.favicon = _as_str(value)
+        elif name == "link_mode":
+            mode = LINK_MODES.get(str(value).strip().lower())
+            if mode is None:
+                warnings.append(
+                    f"{where}: link_mode бывает auto, main или alt, получено {value!r} — оставляю auto"
+                )
+            else:
+                header.link_mode = mode
+
+
+def _apply_system(site: Site, values: dict, source: str, where: str, warnings: list[str]) -> None:
+    system = site.system
     base_dir = os.path.dirname(source)
     for key, value in values.items():
+        if key in HEADER_KEYS:          # ключи шапки можно писать и в [system]
+            _apply_header(site.header, {key: value}, where, warnings)
+            continue
         if key not in SYSTEM_KEYS:
             warnings.append(f"{where}: неизвестный ключ system.{key}")
             continue
@@ -419,7 +475,9 @@ def load(main_path: str = "config/homepage.toml") -> Site:
     for section in sections:
         where = f"{os.path.basename(section['source'])}:{section['line']}"
         if section["kind"] == "system":
-            _apply_system(site.system, section["values"], section["source"], where, site.warnings)
+            _apply_system(site, section["values"], section["source"], where, site.warnings)
+        elif section["kind"] == "header":
+            _apply_header(site.header, section["values"], where, site.warnings)
         elif section["kind"] == "group":
             group = _make_group(section, where, site.warnings)
             key = group_key(section["name"])   # identity = имя секции, name = подпись

@@ -86,17 +86,22 @@
   /* --------------------------------------------------------------- часы */
   var clockTime = document.getElementById("clock-time");
   var clockDate = document.getElementById("clock-date");
-  var timeFormat = { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true };
+  /* [header] time_format = 12 -> AM/PM, 24 -> 24-часовой */
+  var hour12 = root.dataset.timeFormat !== "24";
+  var timeFormat = { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: hour12 };
   var dateFormat = { weekday: "short", day: "numeric", month: "short" };
 
   function tick() {
     var now = new Date();
     /* en-US даёт именно AM/PM — русская локаль отдаёт «ДП/ПП» */
-    if (clockTime) { clockTime.textContent = now.toLocaleTimeString("en-US", timeFormat); }
-    if (clockDate) { clockDate.textContent = now.toLocaleDateString("ru-RU", dateFormat); }
+    clockTime.textContent = now.toLocaleTimeString("en-US", timeFormat);
+    clockDate.textContent = now.toLocaleDateString("ru-RU", dateFormat);
   }
-  tick();
-  setInterval(tick, 1000);
+
+  if (clockTime && clockDate) {
+    tick();
+    setInterval(tick, 1000);
+  }
 
   /* -------------------------------------------------- битые иконки (img) */
   /* Локальные svg вставляются инлайном и не ломаются; тут — png/jpg и

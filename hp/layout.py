@@ -14,6 +14,8 @@ Rules implemented here:
 from __future__ import annotations
 
 import ipaddress
+from types import SimpleNamespace
+from urllib.parse import quote
 
 from .colors import auto as auto_color
 from .config import Group, Service, Site, group_key
@@ -82,18 +84,19 @@ def _plural(count: int, one: str, few: str, many: str) -> str:
     return many
 
 
-def _card_urls(service: Service, is_local: bool) -> tuple[str | None, str | None]:
+def _card_urls(service: Service, prefer_alt: bool) -> tuple[str | None, str | None]:
     """Pick the URL a card opens, plus an optional second one behind a chip.
 
-    ``alt`` is the local/alternative address: it wins while browsing from a
-    private address, ``link`` wins everywhere else.
+    ``alt`` is the local/alternative address: it wins when the page prefers
+    alt (private address, or ``[header] link_mode = "alt"``), ``link``
+    otherwise.
     """
     link, alt = service.link, service.alt
     if not link:
         return alt, None
     if not alt or alt == link:
         return link, None
-    return (alt, link) if is_local else (link, alt)
+    return (alt, link) if prefer_alt else (link, alt)
 
 
 def _initial(name: str) -> str:
@@ -103,9 +106,9 @@ def _initial(name: str) -> str:
     return "?"
 
 
-def _build_service(service: Service, system, is_local: bool, resolve_icon, accent: str) -> dict:
+def _build_service(service: Service, system, prefer_alt: bool, resolve_icon, accent: str) -> dict:
     """One card: the URL it opens now, the other one, and both tints."""
-    primary, secondary = _card_urls(service, is_local)
+    primary, secondary = _card_urls(service, prefer_alt)
     new_page = system.open_in_new_page if service.new_page is None else service.new_page
     if secondary is None or secondary == service.alt:
         secondary_title = "Открыть внешнюю ссылку"
@@ -130,11 +133,36 @@ def _build_service(service: Service, system, is_local: bool, resolve_icon, accen
     }
 
 
+REMOTE_SCHEMES = ("http://", "https://", "//", "data:")
+
+
+def _favicon_url(header, resolve_icon, warnings: list[str]) -> str | None:
+    """An <link rel=icon> target: the configured file, or a data URL for an inline svg."""
+    if not header.favicon:
+        return None
+    raw = header.favicon.strip()
+    if raw.startswith(REMOTE_SCHEMES):
+        return raw
+    found = resolve_icon(SimpleNamespace(icon=raw, icon_link=None))
+    if not found:
+        warnings.append(f"header.favicon: не найден {raw!r} среди иконок — оставляю стандартный")
+        return None
+    if "url" in found:
+        return found["url"]
+    return "data:image/svg+xml;utf8," + quote(found["svg"], safe="")
+
+
 def build_page(site: Site, is_local: bool = True, resolve_icon=None) -> dict:
     """Assemble columns -> groups -> services, ready for the template."""
     if resolve_icon is None:
         resolve_icon = lambda service: service.icon_link  # noqa: E731
     warnings = list(site.warnings)
+    header = site.header
+    # link_mode = main/alt перебивает автоопределение по адресу подключения
+    default_mode = header.link_mode if header.link_mode in ("main", "alt") else (
+        "alt" if is_local else "main"
+    )
+    prefer_alt = default_mode == "alt"
     groups = site.groups
     cols = max(1, site.system.cols or 1)
 
@@ -170,7 +198,7 @@ def build_page(site: Site, is_local: bool = True, resolve_icon=None) -> dict:
 
     for key in ordered_keys:
         group = groups[key]
-        cards = [_build_service(service, site.system, is_local, resolve_icon, accent_of[roots[key]])
+        cards = [_build_service(service, site.system, prefer_alt, resolve_icon, accent_of[roots[key]])
                  for service in sorted(services_by_group.get(key, []), key=sort_key)]
         root = groups[roots[key]]
         columns[column_of[key] - 1].append({
@@ -194,5 +222,14 @@ def build_page(site: Site, is_local: bool = True, resolve_icon=None) -> dict:
         "errors": site.errors,
         "warnings": warnings,
         "is_local": is_local,
-        "default_mode": "alt" if is_local else "main",
+        "default_mode": default_mode,
+        "header": {
+            "show": header.show,
+            "time": header.time,
+            "time_format": header.time_format,
+            "search": header.search,
+            "link_mode": header.link_mode,
+            "icon": resolve_icon(SimpleNamespace(icon=header.icon, icon_link=None)) if header.icon else None,
+            "favicon": _favicon_url(header, resolve_icon, warnings),
+        },
     }
