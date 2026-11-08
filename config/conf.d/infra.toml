@@ -2,13 +2,20 @@
 
 [service:Vaultwarden]
 link = "https://vault.example.com"
-icon = "key.svg"
+icon = "mdi:key-chain"
 desc = "Пароли и токены"
 group = "Group3"
 
+# icon умеет три вида:
+#   icon = "code.svg"          файл из system.icon_path (svg красится в цвет иконки)
+#   icon = "mdi:account-box"   набор Iconify: mdi, sdi (Simple Icons) или любой другой
+#   icon_link = "https://…"    внешняя картинка (icon имеет приоритет)
+# icon_color задаёт цвет иконки; без него берётся акцент группы.
+
 [service:Gitea]
 link = "https://git.example.com"
-icon = "code.svg"
+icon = "sdi:gitea"
+icon_color = purple
 desc = "Свой git-сервер"
 group = "Group3"
 
@@ -22,7 +29,7 @@ group = "Group3"
 
 [service:Proxmox]
 link = "https://proxmox.example.com:8006"
-icon = "server.svg"
+icon = "sdi:proxmox"
 desc = "Виртуалки и LXC"
 group = "Group4"
 
@@ -34,7 +41,8 @@ group = "Group4"
 
 [service:qBittorrent]
 link = "http://192.168.1.10:8080"
-icon = "download.svg"
+icon = "mdi:download"
+icon_color = orange
 desc = "Торренты"
 group = "Group4"
 

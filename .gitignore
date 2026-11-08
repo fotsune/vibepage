@@ -5,3 +5,5 @@ __pycache__/
 .idea/
 .vscode/
 _screens/
+.icon-cache/
+static/_probe.html

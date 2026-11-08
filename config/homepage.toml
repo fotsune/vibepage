@@ -12,11 +12,18 @@ mobile_cols = 1
 # ─── группы ────────────────────────────────────────────────────────
 # priority у группы — это номер столбца, в котором она живёт
 
+# color — акцент группы и цвет её иконок по умолчанию.
+# Можно именем палитры Dracula (purple, pink, cyan, green, orange, yellow, red, comment),
+# hex-ом (#ff79c6) или записью «имя/#hex». Не указан — акцент подбирается по имени
+# группы из той же палитры и не меняется между перезапусками.
+
 [group:Group1]
 priority = 1
+color = green
 
 [group:Group2]
 priority = 2
+color = "#8be9fd"
 
 # Group3 объединена с Group2: тот же столбец, сразу под ней
 [group:Group3]
@@ -24,6 +31,8 @@ link = "Group2"
 
 [group:Group4]
 priority = 3
+color = "red/#ff5555"
 
 [group:Group5]
 priority = 1
+

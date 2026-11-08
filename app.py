@@ -31,7 +31,8 @@ def config_path() -> str:
 
 def _icon_resolver(site):
     icon_path = site.system.icon_path
-    return lambda service: icon_lib.resolve(service, icon_path)
+    cache = os.path.join(site.config_dir, ".icon-cache") if site.config_dir else None
+    return lambda service: icon_lib.resolve(service, icon_path, cache)
 
 
 @app.get("/")

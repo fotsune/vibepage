@@ -15,18 +15,9 @@ from __future__ import annotations
 
 import ipaddress
 
+from .colors import auto as auto_color
 from .config import Group, Service, Site, group_key
 
-ACCENTS = (
-    "#bd93f9",  # purple
-    "#ff79c6",  # pink
-    "#8be9fd",  # cyan
-    "#50fa7b",  # green
-    "#ffb86c",  # orange
-    "#f1fa8c",  # yellow
-    "#ff5555",  # red
-    "#6272a4",  # comment blue
-)
 
 LOCALISH_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0", "home", "homepage"}
 
@@ -112,17 +103,27 @@ def _initial(name: str) -> str:
     return "?"
 
 
-def _build_service(service: Service, system, is_local: bool, resolve_icon) -> dict:
+def _build_service(service: Service, system, is_local: bool, resolve_icon, accent: str) -> dict:
+    """One card: the URL it opens now, the other one, and both tints."""
     primary, secondary = _card_urls(service, is_local)
     new_page = system.open_in_new_page if service.new_page is None else service.new_page
-    secondary_title = "Открыть локальную ссылку" if (secondary and secondary == service.alt) else "Открыть внешнюю ссылку"
+    if secondary is None or secondary == service.alt:
+        secondary_title = "Открыть внешнюю ссылку"
+    else:
+        secondary_title = "Открыть локальную ссылку"
+    main = service.link or service.alt                     # "основная" = link
+    alt = service.alt if service.alt and service.alt != service.link else None
     return {
         "name": service.name,
         "desc": service.desc or "",
         "url": primary or "#",
         "url_alt": secondary,
         "url_alt_title": secondary_title,
+        "href_main": main or "#",
+        "href_alt": alt or "",
         "icon": resolve_icon(service),
+        "icon_color": service.icon_color,                  # None -> group accent
+        "accent": accent,
         "initial": _initial(service.name),
         "new_page": bool(new_page),
         "priority": service.priority,
@@ -165,13 +166,11 @@ def build_page(site: Site, is_local: bool = True, resolve_icon=None) -> dict:
             sort_key(groups[k]),
         ),
     )
-    accent_of: dict[str, str] = {}
-    for index, key in enumerate(sorted(groups, key=lambda k: sort_key(groups[k]))):
-        accent_of[key] = ACCENTS[index % len(ACCENTS)]
+    accent_of = {key: group.color or auto_color(group.name) for key, group in groups.items()}
 
     for key in ordered_keys:
         group = groups[key]
-        cards = [_build_service(service, site.system, is_local, resolve_icon)
+        cards = [_build_service(service, site.system, is_local, resolve_icon, accent_of[roots[key]])
                  for service in sorted(services_by_group.get(key, []), key=sort_key)]
         root = groups[roots[key]]
         columns[column_of[key] - 1].append({
@@ -195,4 +194,5 @@ def build_page(site: Site, is_local: bool = True, resolve_icon=None) -> dict:
         "errors": site.errors,
         "warnings": warnings,
         "is_local": is_local,
+        "default_mode": "alt" if is_local else "main",
     }

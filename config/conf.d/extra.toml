@@ -3,4 +3,5 @@
 
 [service:Node-RED]
 link = "http://192.168.1.10:1880"
+icon = "mdi:monitor-edit"
 desc = "Автоматизации в браузере"

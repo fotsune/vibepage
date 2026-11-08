@@ -21,14 +21,17 @@ import re
 from dataclasses import dataclass, field
 from glob import escape as glob_escape, glob
 
+from .colors import parse as parse_color
+
 DEFAULT_GROUP = "Default"
 
 SECTION_RE = re.compile(r"^\[\s*([A-Za-z_][\w-]*)\s*(?::\s*(.*?))?\s*\]$")
 KEY_RE = re.compile(r"^([A-Za-z_][\w-]*)\s*=\s*(.*)$")
 INT_RE = re.compile(r"[+-]?\d+")
 
-SERVICE_KEYS = {"link", "alt", "name", "icon", "icon_link", "desc", "group", "priority", "new_page"}
-GROUP_KEYS = {"name", "priority", "link"}
+SERVICE_KEYS = {"link", "alt", "name", "icon", "icon_link", "icon_color",
+                "desc", "group", "priority", "new_page"}
+GROUP_KEYS = {"name", "priority", "link", "color"}
 SYSTEM_KEYS = {"title", "icon_path", "config_path", "cols", "mobile_cols", "open_in_new_page"}
 
 URL_SCHEMES = ("http://", "https://", "//", "data:")
@@ -53,6 +56,7 @@ class Group:
     name: str
     priority: int | None = None
     link: str | None = None
+    color: str | None = None          # accent; None means pick one from the name
     declared: bool = True
     source: str | None = None
 
@@ -65,6 +69,7 @@ class Service:
     alt: str | None = None
     icon: str | None = None
     icon_link: str | None = None
+    icon_color: str | None = None     # tint; None means the group accent
     desc: str | None = None
     priority: int | None = None
     new_page: bool | None = None
@@ -338,6 +343,15 @@ def _apply_system(system: System, values: dict, source: str, where: str, warning
             )
 
 
+def _color_of(value, where: str, key: str, warnings: list[str]) -> str | None:
+    if value is None or value == "":
+        return None
+    found = parse_color(value)
+    if found is None:
+        warnings.append(f"{where}: {key}: не понимаю цвет {value!r}, беру акцент по имени")
+    return found
+
+
 def _make_group(section: dict, where: str, warnings: list[str]) -> Group:
     values = section["values"]
     for key in values:
@@ -346,6 +360,7 @@ def _make_group(section: dict, where: str, warnings: list[str]) -> Group:
     name = _as_str(values.get("name")) or section["name"] or "Unnamed"
     return Group(
         name=name,
+        color=_color_of(values.get("color"), where, "color", warnings),
         priority=_as_int(values.get("priority"), where, "priority", warnings),
         link=_as_str(values.get("link")),
         declared=True,
@@ -370,6 +385,7 @@ def _make_service(section: dict, where: str, warnings: list[str]) -> Service:
         alt=alt,
         icon=_as_str(values.get("icon")),
         icon_link=_as_str(values.get("icon_link")),
+        icon_color=_color_of(values.get("icon_color"), where, "icon_color", warnings),
         desc=_as_str(values.get("desc")),
         priority=_as_int(values.get("priority"), where, "priority", warnings),
         new_page=_as_bool(values.get("new_page"), where, "new_page", warnings),
@@ -413,6 +429,7 @@ def load(main_path: str = "config/homepage.toml") -> Site:
                 existing.name = group.name
                 existing.priority = group.priority if group.priority is not None else existing.priority
                 existing.link = group.link or existing.link
+                existing.color = group.color or existing.color
                 existing.declared = True
                 existing.source = group.source
             else:
