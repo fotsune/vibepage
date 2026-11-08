@@ -10,6 +10,7 @@
   var clearButton = document.getElementById("clear-search");
   var cards = Array.prototype.slice.call(document.querySelectorAll(".card"));
   var panels = Array.prototype.slice.call(document.querySelectorAll(".panel"));
+  var columns = Array.prototype.slice.call(document.querySelectorAll(".column"));
 
   function applyFilter() {
     var query = (input && input.value || "").trim().toLowerCase();
@@ -22,6 +23,9 @@
     panels.forEach(function (panel) {
       var any = Array.prototype.some.call(panel.querySelectorAll(".card"), function (card) { return !card.hidden; });
       panel.hidden = !any && !!query;
+    });
+    columns.forEach(function (column) {
+      column.hidden = !column.querySelector(".panel:not([hidden])");
     });
     if (noResults) { noResults.hidden = visible !== 0 || !query; }
   }

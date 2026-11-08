@@ -90,16 +90,16 @@
     {% endfor %}
   </main>
 
-  {% if not page.columns %}
+  {% if page.service_count == 0 %}
   <p class="board-empty">В конфиге нет ни одного сервиса — добавьте секцию <code>[service:Имя]</code>.</p>
   {% endif %}
 
   <p class="no-results" id="no-results" hidden>Ничего не нашлось. <button type="button" id="clear-search">Сбросить поиск</button></p>
 
   <footer class="foot">
-    <span>{{ page.service_count }} {{ 'сервис' if page.service_count == 1 else 'сервисов' }}</span>
+    <span>{{ page.service_count }} {{ page.services_label }}</span>
     <span class="foot-sep">·</span>
-    <span>{{ page.group_count }} {{ 'группа' if page.group_count == 1 else 'групп' }}</span>
+    <span>{{ page.group_count }} {{ page.groups_label }}</span>
     <span class="foot-sep">·</span>
     <span class="foot-muted">{% if page.is_local %}локальное подключение: приоритет у alt{% else %}внешнее подключение: приоритет у link{% endif %}</span>
     <span class="foot-sep">·</span>

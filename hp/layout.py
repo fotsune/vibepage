@@ -78,6 +78,19 @@ def _root_of(key: str, groups: dict[str, Group], warnings: list[str]) -> str:
         current = target
 
 
+def _plural(count: int, one: str, few: str, many: str) -> str:
+    """17 сервисов, 3 сервиса, 1 сервис."""
+    tail = abs(count) % 100
+    if 11 <= tail <= 14:
+        return many
+    tail %= 10
+    if tail == 1:
+        return one
+    if 2 <= tail <= 4:
+        return few
+    return many
+
+
 def _card_urls(service: Service, is_local: bool) -> tuple[str | None, str | None]:
     """Pick the URL a card opens, plus an optional second one behind a chip.
 
@@ -87,7 +100,7 @@ def _card_urls(service: Service, is_local: bool) -> tuple[str | None, str | None
     link, alt = service.link, service.alt
     if not link:
         return alt, None
-    if not alt:
+    if not alt or alt == link:
         return link, None
     return (alt, link) if is_local else (link, alt)
 
@@ -177,6 +190,8 @@ def build_page(site: Site, is_local: bool = True, resolve_icon=None) -> dict:
         "columns": [column for column in columns],
         "group_count": len(groups),
         "service_count": len(site.services),
+        "services_label": _plural(len(site.services), "сервис", "сервиса", "сервисов"),
+        "groups_label": _plural(len(groups), "группа", "группы", "групп"),
         "errors": site.errors,
         "warnings": warnings,
         "is_local": is_local,
