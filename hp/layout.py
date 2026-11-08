@@ -42,14 +42,17 @@ def host_is_local(host: str | None) -> bool:
     if not host:
         return True
     host = host.strip().lower()
-    if host in LOCALISH_HOSTS:
+    if host.startswith("["):                  # [::1]:8080
+        bare = host[1:host.find("]")] if "]" in host else host.strip("[]")
+    else:                                     # name:port or plain name
+        bare = host.split(":", 1)[0]
+    if bare in LOCALISH_HOSTS:
         return True
-    bare = host[1:-1] if host.startswith("[") and host.endswith("]") else host
     try:
         address = ipaddress.ip_address(bare)
     except ValueError:
-        # single-label hostnames ("nas", "server") are treated as local
-        return "." not in bare
+        # single-label hostnames ("nas", "server") count as local
+        return bool(bare) and "." not in bare
     return address.is_private or address.is_loopback or address.is_link_local
 
 
@@ -66,8 +69,10 @@ def _root_of(key: str, groups: dict[str, Group], warnings: list[str]) -> str:
                     f"группа {group.name!r} ссылается на неизвестную группу {group.link!r}"
                 )
             return current
-        if target == current or target in path:
-            cycle = path[path.index(target):] + [target] if target in path else [current]
+        if target == current:                       # self-reference
+            return current
+        if target in path:                          # A -> B -> A: one owner, no loop
+            cycle = path[path.index(target):] + [current, target]
             return min(cycle)
         path.append(current)
         current = target
@@ -136,7 +141,7 @@ def build_page(site: Site, is_local: bool = True, resolve_icon=None) -> dict:
 
     services_by_group: dict[str, list[Service]] = {key: [] for key in groups}
     for service in site.services:
-        services_by_group.setdefault(group_key(service.group), []).append(service)
+        services_by_group.setdefault(service.group_key or group_key(service.group), []).append(service)
 
     columns: list[list[dict]] = [[] for _ in range(cols)]
     ordered_keys = sorted(

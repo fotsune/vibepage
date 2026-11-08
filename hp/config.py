@@ -69,6 +69,7 @@ class Service:
     priority: int | None = None
     new_page: bool | None = None
     source: str | None = None
+    group_key: str = ""
 
 
 @dataclass
@@ -405,7 +406,7 @@ def load(main_path: str = "config/homepage.toml") -> Site:
             _apply_system(site.system, section["values"], section["source"], where, site.warnings)
         elif section["kind"] == "group":
             group = _make_group(section, where, site.warnings)
-            key = group_key(group.name)
+            key = group_key(section["name"])   # identity = имя секции, name = подпись
             existing = site.groups.get(key)
             if existing is not None:
                 # same group named in several files: merge, later values win
@@ -422,9 +423,16 @@ def load(main_path: str = "config/homepage.toml") -> Site:
     if site.system.icon_path is None:
         site.system.icon_path = os.path.join(base_dir, "icons")
 
-    # groups that only exist by being mentioned inside services
+    # services point at groups either by section name or by displayed name
+    by_label = {group_key(group.name): key for key, group in site.groups.items()}
     for service in site.services:
-        site.group(service.group)
+        key = group_key(service.group)
+        if key not in site.groups:
+            key = by_label.get(key, key)
+        service.group_key = key
+        # groups that only exist by being mentioned inside services
+        if key not in site.groups:
+            site.groups[key] = Group(name=service.group, declared=False)
 
     for group in site.groups.values():
         if group.link and group_key(group.link) not in site.groups:

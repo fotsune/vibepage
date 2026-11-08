@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Home</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="aurora" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <a class="brand" href="/">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3.4 6.2 9.2a7.4 7.4 0 1 0 11.6 0z"/><path d="M8.6 14.6h6.8"/>
+        </svg>
+      </span>
+      <span class="brand-text">
+        <strong>Home</strong>
+        <small>self-hosted dashboard</small>
+      </span>
+    </a>
+
+    <div class="topbar-tools">
+      <label class="search" for="search">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"/><path d="m16 16 4.2 4.2"/></svg>
+        <input id="search" type="search" placeholder="Найти сервис…" autocomplete="off" spellcheck="false" aria-label="Поиск сервиса">
+        <kbd>/</kbd>
+      </label>
+      <div class="clock">
+        <span class="clock-time" id="clock-time">--:--</span>
+        <span class="clock-date" id="clock-date">&nbsp;</span>
+      </div>
+    </div>
+  </header>
+
+  
+
+  <main class="board" style="--cols: 3; --mobile-cols: 1;">
+    
+    <div class="column">
+      
+      <section class="panel " data-group="Group1" style="--accent: #bd93f9;">
+        <h2 class="panel-title">
+          <span class="panel-dot" aria-hidden="true"></span>
+          <span class="panel-name">Group1</span>
+          
+          <span class="panel-count">5</span>
+        </h2>
+        <div class="cards">
+          
+          <article class="card card-with-alt" data-search="grafana метрики и дашборды group1" style="--i: 0">
+            <a class="card-link" href="https://grafana.example.com"
+               target="_blank" rel="noopener noreferrer">
+              <span class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.6 20.4h16.8"/><path d="M6.6 20.4V13M11 20.4V8.6M15.4 20.4v-4.8M19.8 20.4V5.6"/></svg>
+                
+              </span>
+              <span class="card-text">
+                <span class="card-name" title="Grafana">Grafana</span>
+                <span class="card-desc" title="Метрики и дашборды">Метрики и дашборды</span>
+              </span>
+            </a>
+            
+            <a class="card-alt" href="http://192.168.1.10:3000" title="Открыть локальную ссылку"
+               target="_blank" rel="noopener noreferrer">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 5.5h9v9"/><path d="M18.5 5.5 8 16"/><path d="M6 9.5H4.8a.8.8 0 0 0-.8.8v8.9a.8.8 0 0 0 .8.8h8.9a.8.8 0 0 0 .8-.8V19"/></svg>
+            </a>
+            
+          </article>
+          
+          <article class="card " data-search="plex второй медиасервер group1" style="--i: 1">
+            <a class="card-link" href="https://plex.example.com"
+               target="_blank" rel="noopener noreferrer">
+              <span class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.6" y="4.2" width="18.8" height="12.4" rx="2"/><path d="M8.8 20.2h6.4M12 16.6v3.6"/></svg>
+                
+              </span>
+              <span class="card-text">
+                <span class="card-name" title="Plex">Plex</span>
+                <span class="card-desc" title="Второй медиасервер">Второй медиасервер</span>
+              </span>
+            </a>
+            
+          </article>
+          
+          <article class="card card-with-alt" data-search="jellyfin медиатека, кино и сериалы group1" style="--i: 2">
+            <a class="card-link" href="https://jellyfin.example.com"
+               target="_blank" rel="noopener noreferrer">
+              <span class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.8" y="4.4" width="18.4" height="15.2" rx="2"/><path d="M7.4 4.4v15.2M16.6 4.4v15.2M2.8 12h18.4"/></svg>
+                
+              </span>
+              <span class="card-text">
+                <span class="card-name" title="Jellyfin">Jellyfin</span>
+                <span class="card-desc" title="Медиатека, кино и сериалы">Медиатека, кино и сериалы</span>
+              </span>
+            </a>
+            
+            <a class="card-alt" href="http://192.168.1.10:8096" title="Открыть локальную ссылку"
+               target="_blank" rel="noopener noreferrer">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 5.5h9v9"/><path d="M18.5 5.5 8 16"/><path d="M6 9.5H4.8a.8.8 0 0 0-.8.8v8.9a.8.8 0 0 0 .8.8h8.9a.8.8 0 0 0 .8-.8V19"/></svg>
+            </a>
+            
+          </article>
+          
+          <article class="card " data-search="portainer контейнеры и стеки group1" style="--i: 3">
+            <a class="card-link" href="https://portainer.example.com"
+               target="_blank" rel="noopener noreferrer">
+              <span class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="10.4" width="4.2" height="4.2" rx=".7"/><rect x="8.4" y="10.4" width="4.2" height="4.2" rx=".7"/><rect x="13.6" y="10.4" width="4.2" height="4.2" rx=".7"/><rect x="8.4" y="5.6" width="4.2" height="4.2" rx=".7"/><path d="M2.6 14.6h18c.5 0 .8.4.6.9-1 3.2-3.9 4.9-8 4.9H9.2c-3.8 0-6.1-2-6.6-5.8z"/></svg>
+                
+              </span>
+              <span class="card-text">
+                <span class="card-name" title="Portainer">Portainer</span>
+                <span class="card-desc" title="Контейнеры и стеки">Контейнеры и стеки</span>
+              </span>
+            </a>
+            
+          </article>
+          
+          <article class="card " data-search="uptime kuma мониторинг доступности group1" style="--i: 4">
+            <a class="card-link" href="http://192.168.1.10:3001"
+               target="_blank" rel="noopener noreferrer">
+              <span class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="3.2" width="7.2" height="7.2" rx="1.8"/><rect x="13.6" y="3.2" width="7.2" height="7.2" rx="1.8"/><rect x="3.2" y="13.6" width="7.2" height="7.2" rx="1.8"/><rect x="13.6" y="13.6" width="7.2" height="7.2" rx="1.8"/></svg>
+                
+              </span>
+              <span class="card-text">
+                <span class="card-name" title="Uptime Kuma">Uptime Kuma</span>
+                <span class="card-desc" title="Мониторинг доступности">Мониторинг доступности</span>
+              </span>
+            </a>
+            
+          </article>
+          
+          
+        </div>
+      </section>
+      
+      <section class="panel " data-group="Group5" style="--accent: #ff79c6;">
+        <h2 class="panel-title">
+          <span class="panel-dot" aria-hidden="true"></span>
+          <span class="panel-name">Group5</span>
+          
+          <span class="panel-count">1</span>
+        </h2>
+        <div class="cards">
+          
+          <article class="card " data-search="minio s3-хранилище group5" style="--i: 0">
+            <a class="card-link" href="https://minio.example.com"
+               target="_blank" rel="noopener noreferrer">
+              <span class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6.4" rx="7.4" ry="3"/><path d="M4.6 6.4v11.2c0 1.7 3.3 3 7.4 3s7.4-1.3 7.4-3V6.4"/><path d="M4.6 12c0 1.7 3.3 3 7.4 3s7.4-1.3 7.4-3"/></svg>
+                
+              </span>
+              <span class="card-text">
+                <span class="card-name" title="MinIO">MinIO</span>
+                <span class="card-desc" title="S3-хранилище">S3-хранилище</span>
+              </span>
+            </a>
+            
+          </article>
+          
+          
+        </div>
+      </section>
+      
+      <section class="panel " data-group="Default" style="--accent: #ffb86c;">
+        <h2 class="panel-title">
+          <span class="panel-dot" aria-hidden="true"></span>
+          <span class="panel-name">Default</span>
+          
+          <span class="panel-count">1</span>
+        </h2>
+        <div class="cards">
+          
+          <article class="card " data-search="node-red автоматизации в браузере default" style="--i: 0">
+            <a class="card-link" href="http://192.168.1.10:1880"
+               target="_blank" rel="noopener noreferrer">
+              <span class="card-icon">
+                <span class="placeholder">N</span>
+              </span>
+              <span class="card-text">
+                <span class="card-name" title="Node-RED">Node-RED</span>
+                <span class="card-desc" title="Автоматизации в браузере">Автоматизации в браузере</span>
+              </span>
+            </a>
+            
+          </article>
+          
+          
+        </div>
+      </section>
+      
+    </div>
+    
+    <div class="column">
+      
+      <section class="panel " data-group="Group2" style="--accent: #8be9fd;">
+        <h2 class="panel-title">
+          <span class="panel-dot" aria-hidden="true"></span>
+          <span class="panel-name">Group2</span>
+          
+          <span class="panel-count">2</span>
+        </h2>
+        <div class="cards">
+          
+          <article class="card " data-search="home assistant умный дом group2" style="--i: 0">
+            <a class="card-link" href="http://192.168.1.10:8123"
+               target="_blank" rel="noopener noreferrer">
+              <span class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 10.6 12 3.5l8.5 7.1"/><path d="M5.8 9.6V20a.6.6 0 0 0 .6.6h11.2a.6.6 0 0 0 .6-.6V9.6"/><path d="M9.8 20.6v-5.2h4.4v5.2"/></svg>
+                
+              </span>
+              <span class="card-text">
+                <span class="card-name" title="Home Assistant">Home Assistant</span>
+                <span class="card-desc" title="Умный дом">Умный дом</span>
+              </span>
+            </a>
+            
+          </article>
+          
+          <article class="card " data-search="nextcloud файлы, календарь, контакты group2" style="--i: 1">
+            <a class="card-link" href="https://cloud.example.com"
+               target="_blank" rel="noopener noreferrer">
+              <span class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M17.4 18.6a3.6 3.6 0 0 0 .3-7.2 5.6 5.6 0 0 0-10.7-1.6 3.9 3.9 0 0 0 .4 8.8z"/></svg>
+                
+              </span>
+              <span class="card-text">
+                <span class="card-name" title="Nextcloud">Nextcloud</span>
+                <span class="card-desc" title="Файлы, календарь, контакты">Файлы, календарь, контакты</span>
+              </span>
+            </a>
+            
+          </article>
+          
+          
+        </div>
+      </section>
+      
+      <section class="panel panel-merged" data-group="Group3" style="--accent: #8be9fd;">
+        <h2 class="panel-title">
+          <span class="panel-dot" aria-hidden="true"></span>
+          <span class="panel-name">Group3</span>
+          <span class="panel-tag" title="Объединена с группой Group2">merged</span>
+          <span class="panel-count">3</span>
+        </h2>
+        <div class="cards">
+          
+          <article class="card " data-search="gitea свой git-сервер group3" style="--i: 0">
+            <a class="card-link" href="https://git.example.com"
+               target="_blank" rel="noopener noreferrer">
+              <span class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m8.6 8.4-4.2 3.6 4.2 3.6M15.4 8.4l4.2 3.6-4.2 3.6M13.4 5.4l-2.8 13.2"/></svg>
+                
+              </span>
+              <span class="card-text">
+                <span class="card-name" title="Gitea">Gitea</span>
+                <span class="card-desc" title="Свой git-сервер">Свой git-сервер</span>
+              </span>
+            </a>
+            
+          </article>
+          
+          <article class="card " data-search="paperless-ngx архив документов group3" style="--i: 1">
+            <a class="card-link" href="https://paperless.example.com"
+               target="_blank" rel="noopener noreferrer">
+              <span class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.6h6a2.4 2.4 0 0 1 2 1.2 2.4 2.4 0 0 1 2-1.2h6v13.2h-6a2.4 2.4 0 0 0-2 1.2 2.4 2.4 0 0 0-2-1.2H4z"/><path d="M12 5.8v13.2"/></svg>
+                
+              </span>
+              <span class="card-text">
+                <span class="card-name" title="Paperless-ngx">Paperless-ngx</span>
+                <span class="card-desc" title="Архив документов">Архив документов</span>
+              </span>
+            </a>
+            
+          </article>
+          
+          <article class="card " data-search="vaultwarden пароли и токены group3" style="--i: 2">
+            <a class="card-link" href="https://vault.example.com"
+               target="_blank" rel="noopener noreferrer">
+              <span class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.2" cy="8.2" r="3.6"/><path d="m10.9 10.9 8.2 8.2M16.4 16.4l1.8-1.8M18.8 18.8l1.8-1.8"/></svg>
+                
+              </span>
+              <span class="card-text">
+                <span class="card-name" title="Vaultwarden">Vaultwarden</span>
+                <span class="card-desc" title="Пароли и токены">Пароли и токены</span>
+              </span>
+            </a>
+            
+          </article>
+          
+          
+        </div>
+      </section>
+      
+    </div>
+    
+    <div class="column">
+      
+      <section class="panel " data-group="Group4" style="--accent: #50fa7b;">
+        <h2 class="panel-title">
+          <span class="panel-dot" aria-hidden="true"></span>
+          <span class="panel-name">Group4</span>
+          
+          <span class="panel-count">5</span>
+        </h2>
+        <div class="cards">
+          
+          <article class="card " data-search="pi-hole dns и блокировка рекламы group4" style="--i: 0">
+            <a class="card-link" href="http://192.168.1.10/admin"
+               target="_blank" rel="noopener noreferrer">
+              <span class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 5 5.8v5.4c0 4 2.8 7.4 7 9.6 4.2-2.2 7-5.6 7-9.6V5.8z"/><path d="m8.9 11.8 2.2 2.2 4-4.2"/></svg>
+                
+              </span>
+              <span class="card-text">
+                <span class="card-name" title="Pi-hole">Pi-hole</span>
+                <span class="card-desc" title="DNS и блокировка рекламы">DNS и блокировка рекламы</span>
+              </span>
+            </a>
+            
+          </article>
+          
+          <article class="card " data-search="proxmox виртуалки и lxc group4" style="--i: 1">
+            <a class="card-link" href="https://proxmox.example.com:8006"
+               target="_blank" rel="noopener noreferrer">
+              <span class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="3.6" width="17.6" height="6.6" rx="2"/><rect x="3.2" y="13.8" width="17.6" height="6.6" rx="2"/><path d="M6.9 6.9h.01M6.9 17.1h.01"/></svg>
+                
+              </span>
+              <span class="card-text">
+                <span class="card-name" title="Proxmox">Proxmox</span>
+                <span class="card-desc" title="Виртуалки и LXC">Виртуалки и LXC</span>
+              </span>
+            </a>
+            
+          </article>
+          
+          <article class="card " data-search="qbittorrent торренты group4" style="--i: 2">
+            <a class="card-link" href="http://192.168.1.10:8080"
+               target="_blank" rel="noopener noreferrer">
+              <span class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.6v11.2m0 0 4.2-4.2M12 14.8 7.8 10.6"/><path d="M4 16.6v1.6a2.2 2.2 0 0 0 2.2 2.2h11.6a2.2 2.2 0 0 0 2.2-2.2v-1.6"/></svg>
+                
+              </span>
+              <span class="card-text">
+                <span class="card-name" title="qBittorrent">qBittorrent</span>
+                <span class="card-desc" title="Торренты">Торренты</span>
+              </span>
+            </a>
+            
+          </article>
+          
+          <article class="card " data-search="romm ретро-игры в браузере group4" style="--i: 3">
+            <a class="card-link" href="http://192.168.1.10:8088"
+               target="_blank" rel="noopener noreferrer">
+              <span class="card-icon">
+                <img src="https://cdn.simpleicons.org/retroarch/BD93F9" alt="" loading="lazy" data-fallback="R">
+                
+              </span>
+              <span class="card-text">
+                <span class="card-name" title="RomM">RomM</span>
+                <span class="card-desc" title="Ретро-игры в браузере">Ретро-игры в браузере</span>
+              </span>
+            </a>
+            
+          </article>
+          
+          <article class="card " data-search="syncthing синхронизация папок group4" style="--i: 4">
+            <a class="card-link" href="http://192.168.1.10:8384"
+               target="_blank" rel="noopener noreferrer">
+              <span class="card-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.6 10.4A7.6 7.6 0 0 1 18 6.6l1.6 1.7"/><path d="M19.6 4.4v3.9h-3.9"/><path d="M19.4 13.6A7.6 7.6 0 0 1 6 17.4l-1.6-1.7"/><path d="M4.4 19.6v-3.9h3.9"/></svg>
+                
+              </span>
+              <span class="card-text">
+                <span class="card-name" title="Syncthing">Syncthing</span>
+                <span class="card-desc" title="Синхронизация папок">Синхронизация папок</span>
+              </span>
+            </a>
+            
+          </article>
+          
+          
+        </div>
+      </section>
+      
+    </div>
+    
+  </main>
+
+  
+
+  <p class="no-results" id="no-results" hidden>Ничего не нашлось. <button type="button" id="clear-search">Сбросить поиск</button></p>
+
+  <footer class="foot">
+    <span>17 сервисов</span>
+    <span class="foot-sep">·</span>
+    <span>6 групп</span>
+    <span class="foot-sep">·</span>
+    <span class="foot-muted">внешнее подключение: приоритет у link</span>
+    <span class="foot-sep">·</span>
+    <a class="foot-refresh" href="/">обновить</a>
+  </footer>
+
+  <script src="/static/js/app.js" defer></script>
+<pre id="probe">pending</pre>
+<script>
+window.addEventListener("load", function () {
+  function box(el) { var r = el.getBoundingClientRect(); return {x:Math.round(r.x+scrollX), y:Math.round(r.y+scrollY), w:Math.round(r.width), h:Math.round(r.height)}; }
+  var out = { viewport:{w:innerWidth,h:innerHeight}, docWidth: document.documentElement.scrollWidth, docHeight: document.documentElement.scrollHeight };
+  out.columns = [...document.querySelectorAll(".column")].map(function (col) {
+    return { box: box(col), panels: [...col.querySelectorAll(".panel")].map(function (p) {
+      var cards = [...p.querySelectorAll(".card")].map(box);
+      var rows = [...new Set(cards.map(function (c) { return c.y; }))];
+      var icon = p.querySelector(".card-icon svg, .card-icon img, .card-icon .placeholder");
+      return { name: p.dataset.group, box: box(p), cards: cards.length,
+               cardRows: rows.length, perRow: rows.map(function (y) { return cards.filter(function (c) { return c.y === y; }).length; }),
+               icon: icon ? box(icon) : null };
+    })};
+  });
+  var s = getComputedStyle(document.body);
+  out.style = { bg: s.backgroundColor, font: s.fontFamily.split(",")[0] };
+  var cardsEl = document.querySelector(".cards");
+  out.style.cards = cardsEl ? getComputedStyle(cardsEl).gridTemplateColumns : null;
+  document.getElementById("probe").textContent = JSON.stringify(out);
+});
+</script></body>
+</html>

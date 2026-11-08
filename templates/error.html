@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>{{ title }}</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="aurora" aria-hidden="true"></div>
+  <main class="crash">
+    <h1 class="crash-title">{{ title }}</h1>
+    <p class="crash-message">{{ message }}</p>
+    <p class="crash-path">файл: {{ path }}</p>
+    <pre class="crash-detail">{{ detail }}</pre>
+    <a class="crash-link" href="/">попробовать снова</a>
+  </main>
+</body>
+</html>

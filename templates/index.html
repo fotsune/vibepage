@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>{{ page.title }}</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="aurora" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <a class="brand" href="/">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3.4 6.2 9.2a7.4 7.4 0 1 0 11.6 0z"/><path d="M8.6 14.6h6.8"/>
+        </svg>
+      </span>
+      <span class="brand-text">
+        <strong>{{ page.title }}</strong>
+        <small>self-hosted dashboard</small>
+      </span>
+    </a>
+
+    <div class="topbar-tools">
+      <label class="search" for="search">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"/><path d="m16 16 4.2 4.2"/></svg>
+        <input id="search" type="search" placeholder="Найти сервис…" autocomplete="off" spellcheck="false" aria-label="Поиск сервиса">
+        <kbd>/</kbd>
+      </label>
+      <div class="clock">
+        <span class="clock-time" id="clock-time">--:--</span>
+        <span class="clock-date" id="clock-date">&nbsp;</span>
+      </div>
+    </div>
+  </header>
+
+  {% if page.errors or page.warnings %}
+  <div class="notices">
+    {% for error in page.errors %}
+    <div class="notice notice-error"><span class="notice-tag">конфиг</span><span>{{ error }}</span></div>
+    {% endfor %}
+    {% for warning in page.warnings %}
+    <div class="notice notice-warn"><span class="notice-tag">внимание</span><span>{{ warning }}</span></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <main class="board" style="--cols: {{ page.cols }}; --mobile-cols: {{ page.mobile_cols }};">
+    {% for column in page.columns %}
+    <div class="column">
+      {% for group in column %}
+      <section class="panel {% if group.merged %}panel-merged{% endif %}" data-group="{{ group.name }}" style="--accent: {{ group.accent }};">
+        <h2 class="panel-title">
+          <span class="panel-dot" aria-hidden="true"></span>
+          <span class="panel-name">{{ group.name }}</span>
+          {% if group.merged %}<span class="panel-tag" title="Объединена с группой {{ group.root }}">merged</span>{% endif %}
+          <span class="panel-count">{{ group.services|length }}</span>
+        </h2>
+        <div class="cards">
+          {% for service in group.services %}
+          <article class="card {% if service.url_alt %}card-with-alt{% endif %}" data-search="{{ (service.name ~ ' ' ~ service.desc ~ ' ' ~ group.name)|lower }}" style="--i: {{ loop.index0 }}">
+            <a class="card-link" href="{{ service.url }}"
+               {% if service.new_page %}target="_blank" rel="noopener noreferrer"{% endif %}>
+              <span class="card-icon">
+                {% if service.icon and service.icon.svg %}{{ service.icon.svg|safe }}
+                {% elif service.icon %}<img src="{{ service.icon.url }}" alt="" loading="lazy" data-fallback="{{ service.initial }}">
+                {% else %}<span class="placeholder">{{ service.initial }}</span>{% endif %}
+              </span>
+              <span class="card-text">
+                <span class="card-name" title="{{ service.name }}">{{ service.name }}</span>
+                {% if service.desc %}<span class="card-desc" title="{{ service.desc }}">{{ service.desc }}</span>{% endif %}
+              </span>
+            </a>
+            {% if service.url_alt %}
+            <a class="card-alt" href="{{ service.url_alt }}" title="{{ service.url_alt_title }}"
+               {% if service.new_page %}target="_blank" rel="noopener noreferrer"{% endif %}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 5.5h9v9"/><path d="M18.5 5.5 8 16"/><path d="M6 9.5H4.8a.8.8 0 0 0-.8.8v8.9a.8.8 0 0 0 .8.8h8.9a.8.8 0 0 0 .8-.8V19"/></svg>
+            </a>
+            {% endif %}
+          </article>
+          {% endfor %}
+          {% if not group.services %}<p class="panel-empty">здесь пока пусто</p>{% endif %}
+        </div>
+      </section>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </main>
+
+  {% if not page.columns %}
+  <p class="board-empty">В конфиге нет ни одного сервиса — добавьте секцию <code>[service:Имя]</code>.</p>
+  {% endif %}
+
+  <p class="no-results" id="no-results" hidden>Ничего не нашлось. <button type="button" id="clear-search">Сбросить поиск</button></p>
+
+  <footer class="foot">
+    <span>{{ page.service_count }} {{ 'сервис' if page.service_count == 1 else 'сервисов' }}</span>
+    <span class="foot-sep">·</span>
+    <span>{{ page.group_count }} {{ 'группа' if page.group_count == 1 else 'групп' }}</span>
+    <span class="foot-sep">·</span>
+    <span class="foot-muted">{% if page.is_local %}локальное подключение: приоритет у alt{% else %}внешнее подключение: приоритет у link{% endif %}</span>
+    <span class="foot-sep">·</span>
+    <a class="foot-refresh" href="/">обновить</a>
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+</body>
+</html>
