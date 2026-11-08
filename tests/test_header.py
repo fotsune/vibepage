@@ -97,6 +97,16 @@ search = "может быть"
         self.assertEqual(len([w for w in site.warnings if "link_mode" in w]), 1)
         self.assertEqual(len([w for w in site.warnings if "search" in w]), 1)
 
+    def test_tagline_has_a_default_and_can_be_changed(self):
+        site, _ = self.make()
+        self.assertEqual(site.header.desc, "self-hosted dashboard")
+        site, _ = self.make('\n[header]\ndesc = "мои сервисы"\n')
+        self.assertEqual(site.header.desc, "мои сервисы")
+        site, _ = self.make('\n[header]\nsubtitle = "сеть дома"\n', logo=False)
+        self.assertEqual(site.header.desc, "сеть дома")
+        site, _ = self.make('\n[header]\ndesc = ""\n', logo=False)
+        self.assertEqual(site.header.desc, "")          # пустая строка прячет подпись
+
     def test_unknown_header_key_warns(self):
         site, _ = self.make("\n[header]\nclock = false\n")
         self.assertTrue(any("header.clock" in warning for warning in site.warnings))
@@ -159,8 +169,18 @@ class HeaderHtmlTests(HeaderCase):
         body = self.client(path).get("/").get_data(as_text=True)
         self.assertIn('href="/static/favicon.svg"', body)
 
+    def test_tagline_is_rendered_and_can_be_hidden(self):
+        _, path = self.make('\n[header]\ndesc = "мои сервисы"\n')
+        body = self.client(path).get("/").get_data(as_text=True)
+        self.assertIn("<small>мои сервисы</small>", body)
+        _, path = self.make('\n[header]\ndesc = ""\n', logo=False)
+        body = self.client(path).get("/").get_data(as_text=True)
+        self.assertNotIn("self-hosted dashboard", body)
+        self.assertNotIn("<small></small>", body)
+
     def test_default_favicon_without_header_section(self):
         _, path = self.make()
         body = self.client(path).get("/").get_data(as_text=True)
         self.assertIn('href="/static/favicon.svg"', body)
         self.assertIn('data-time-format="12"', body)
+        self.assertIn("<small>self-hosted dashboard</small>", body)

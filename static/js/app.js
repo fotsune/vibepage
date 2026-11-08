@@ -55,6 +55,7 @@
   var MODE_KEY = "home.linkMode";
   var switchButtons = Array.prototype.slice.call(document.querySelectorAll(".linkmode-btn"));
   var links = Array.prototype.slice.call(document.querySelectorAll(".card-link, .card-alt"));
+  var chips = Array.prototype.slice.call(document.querySelectorAll(".card-alt"));
   /* приоритет: ?links= / localStorage (ставит шапка), иначе выбор сервера */
   var root = document.documentElement;
   var initial = root.dataset.linkMode || root.dataset.defaultLinkMode || "main";
@@ -66,6 +67,11 @@
     links.forEach(function (link) {
       var target = mode === "alt" ? link.dataset.alt : link.dataset.main;
       if (target) { link.setAttribute("href", target); }
+    });
+    /* подсказка чипа описывает ту ссылку, на которую он теперь ведёт */
+    chips.forEach(function (chip) {
+      var hint = mode === "alt" ? chip.dataset.titleAlt : chip.dataset.titleMain;
+      if (hint) { chip.title = hint; }
     });
     switchButtons.forEach(function (button) {
       button.setAttribute("aria-pressed", button.dataset.mode === mode ? "true" : "false");

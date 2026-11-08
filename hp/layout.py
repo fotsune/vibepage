@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import ipaddress
 from types import SimpleNamespace
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from .colors import auto as auto_color
 from .config import Group, Service, Site, group_key
@@ -99,6 +99,22 @@ def _card_urls(service: Service, prefer_alt: bool) -> tuple[str | None, str | No
     return (alt, link) if prefer_alt else (link, alt)
 
 
+def _url_is_local(url: str | None) -> bool:
+    """Is this link an address only reachable from the LAN?"""
+    if not url:
+        return False
+    try:
+        host = urlsplit(url).netloc or urlsplit("//" + url).netloc
+    except ValueError:
+        return False
+    return bool(host) and host_is_local(host)
+
+
+def _link_title(url: str | None) -> str:
+    """Подпись для ссылки — по тому, локальная она или внешняя."""
+    return "Открыть локальную ссылку" if _url_is_local(url) else "Открыть внешнюю ссылку"
+
+
 def _initial(name: str) -> str:
     for char in name:
         if char.isalnum():
@@ -110,10 +126,6 @@ def _build_service(service: Service, system, prefer_alt: bool, resolve_icon, acc
     """One card: the URL it opens now, the other one, and both tints."""
     primary, secondary = _card_urls(service, prefer_alt)
     new_page = system.open_in_new_page if service.new_page is None else service.new_page
-    if secondary is None or secondary == service.alt:
-        secondary_title = "Открыть внешнюю ссылку"
-    else:
-        secondary_title = "Открыть локальную ссылку"
     main = service.link or service.alt                     # "основная" = link
     alt = service.alt if service.alt and service.alt != service.link else None
     return {
@@ -121,7 +133,10 @@ def _build_service(service: Service, system, prefer_alt: bool, resolve_icon, acc
         "desc": service.desc or "",
         "url": primary or "#",
         "url_alt": secondary,
-        "url_alt_title": secondary_title,
+        "url_alt_title": _link_title(secondary) if secondary else "",
+        # подсказка чипа зависит от режима: в main он ведёт на alt, в alt — на link
+        "chip_title_main": _link_title(alt) if alt else "",
+        "chip_title_alt": _link_title(main) if alt else "",
         "href_main": main or "#",
         "href_alt": alt or "",
         "icon": resolve_icon(service),
@@ -196,13 +211,14 @@ def build_page(site: Site, is_local: bool = True, resolve_icon=None) -> dict:
     )
     accent_of = {key: group.color or auto_color(group.name) for key, group in groups.items()}
 
-    for key in ordered_keys:
+    for flow, key in enumerate(ordered_keys):
         group = groups[key]
         cards = [_build_service(service, site.system, prefer_alt, resolve_icon, accent_of[roots[key]])
                  for service in sorted(services_by_group.get(key, []), key=sort_key)]
         root = groups[roots[key]]
         columns[column_of[key] - 1].append({
             "name": group.name,
+            "flow": flow,
             "accent": accent_of[roots[key]],
             "root": root.name,
             "merged": key != roots[key],
@@ -229,6 +245,7 @@ def build_page(site: Site, is_local: bool = True, resolve_icon=None) -> dict:
             "time_format": header.time_format,
             "search": header.search,
             "link_mode": header.link_mode,
+            "desc": header.desc,
             "icon": resolve_icon(SimpleNamespace(icon=header.icon, icon_link=None)) if header.icon else None,
             "favicon": _favicon_url(header, resolve_icon, warnings),
         },

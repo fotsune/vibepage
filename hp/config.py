@@ -35,7 +35,7 @@ SERVICE_KEYS = {"link", "alt", "name", "icon", "icon_link", "icon_color",
 GROUP_KEYS = {"name", "priority", "link", "color"}
 SYSTEM_KEYS = {"title", "icon_path", "config_path", "cols", "mobile_cols", "open_in_new_page"}
 HEADER_KEYS = {"show", "enabled", "header", "time", "time_format", "icon", "favicon", "search",
-               "link_mode", "main_alt"}
+               "link_mode", "main_alt", "desc", "tagline", "subtitle"}
 LINK_MODES = {"auto": "auto", "main": "main", "link": "main", "primary": "main", "external": "main",
               "alt": "alt", "alternate": "alt", "local": "alt"}
 
@@ -67,6 +67,7 @@ class Header:
     icon: str | None = None          # логотип, путь относительно system.icon_path
     favicon: str | None = None       # favicon, путь относительно system.icon_path
     link_mode: str = "auto"          # auto | main | alt
+    desc: str = "self-hosted dashboard"   # подпись под заголовком; "" — не показывать
 
 
 @dataclass
@@ -340,7 +341,8 @@ def _apply_header(header: Header, values: dict, where: str, warnings: list[str])
             warnings.append(f"{where}: неизвестный ключ header.{key}")
             continue
         # main_alt — то же, что link_mode; enabled/header — то же, что show
-        name = {"enabled": "show", "header": "show", "main_alt": "link_mode"}.get(key, key)
+        name = {"enabled": "show", "header": "show", "main_alt": "link_mode",
+                "tagline": "desc", "subtitle": "desc"}.get(key, key)
         if name == "show":
             header.show = _as_bool(value, where, "header", warnings, header.show)
         elif name == "time":
@@ -353,6 +355,9 @@ def _apply_header(header: Header, values: dict, where: str, warnings: list[str])
                 warnings.append(f"{where}: time_format бывает 12 или 24, получено {value!r} — беру 12")
                 number = 12
             header.time_format = number
+        elif name == "desc":
+            # desc = "" прячет подпись, отсутствие ключа оставляет стандартную
+            header.desc = _as_str(value) or ""
         elif name == "icon":
             header.icon = _as_str(value)
         elif name == "favicon":

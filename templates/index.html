@@ -33,7 +33,7 @@
       </span>
       <span class="brand-text">
         <strong>{{ page.title }}</strong>
-        <small>self-hosted dashboard</small>
+        {% if page.header.desc %}<small>{{ page.header.desc }}</small>{% endif %}
       </span>
     </a>
 
@@ -76,7 +76,7 @@
     {% for column in page.columns %}
     <div class="column">
       {% for group in column %}
-      <section class="panel{% if group.merged %} panel-merged{% endif %}" data-group="{{ group.name }}" style="--accent: {{ group.accent }};">
+      <section class="panel{% if group.merged %} panel-merged{% endif %}" data-group="{{ group.name }}" style="--accent: {{ group.accent }}; --flow: {{ group.flow }};">
         <h2 class="panel-title">
           <span class="panel-dot" aria-hidden="true"></span>
           <span class="panel-name">{{ group.name }}</span>
@@ -101,6 +101,7 @@
             </a>
             {% if service.url_alt %}
             <a class="card-alt" href="{{ service.url_alt }}" title="{{ service.url_alt_title }}"
+               data-title-main="{{ service.chip_title_main }}" data-title-alt="{{ service.chip_title_alt }}"
                data-main="{{ service.href_alt }}" data-alt="{{ service.href_main }}"
                {% if service.new_page %}target="_blank" rel="noopener noreferrer"{% endif %}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 5.5h9v9"/><path d="M18.5 5.5 8 16"/><path d="M6 9.5H4.8a.8.8 0 0 0-.8.8v8.9a.8.8 0 0 0 .8.8h8.9a.8.8 0 0 0 .8-.8V19"/></svg>

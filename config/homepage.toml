@@ -15,6 +15,7 @@ mobile_cols = 1
 
 [header]
 show = true              # вся шапка целиком (можно писать header = true)
+desc = "self-hosted dashboard"   # подпись под заголовком; desc = "" уберёт её
 time = true              # часы
 time_format = 12         # 12 — AM/PM, 24 — 24-часовой формат
 search = true            # строка поиска
