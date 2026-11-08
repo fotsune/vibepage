@@ -1,0 +1,60 @@
+# ─── Group3: сервисы (объединена с Group2) ───────────────────────
+
+[service:Vaultwarden]
+link = "https://vault.example.com"
+icon = "key.svg"
+desc = "Пароли и токены"
+group = "Group3"
+
+[service:Gitea]
+link = "https://git.example.com"
+icon = "code.svg"
+desc = "Свой git-сервер"
+group = "Group3"
+
+[service:Paperless-ngx]
+link = "https://paperless.example.com"
+icon = "book.svg"
+desc = "Архив документов"
+group = "Group3"
+
+# ─── Group4: инфраструктура ──────────────────────────────────────
+
+[service:Proxmox]
+link = "https://proxmox.example.com:8006"
+icon = "server.svg"
+desc = "Виртуалки и LXC"
+group = "Group4"
+
+[service:Pi-hole]
+link = "http://192.168.1.10/admin"
+icon = "shield.svg"
+desc = "DNS и блокировка рекламы"
+group = "Group4"
+
+[service:qBittorrent]
+link = "http://192.168.1.10:8080"
+icon = "download.svg"
+desc = "Торренты"
+group = "Group4"
+
+[service:Syncthing]
+link = "http://192.168.1.10:8384"
+icon = "sync.svg"
+desc = "Синхронизация папок"
+group = "Group4"
+
+# иконка может быть внешней ссылкой: icon_link (icon имеет приоритет)
+[service:RomM]
+link = "http://192.168.1.10:8088"
+icon_link = "https://cdn.simpleicons.org/retroarch/BD93F9"
+desc = "Ретро-игры в браузере"
+group = "Group4"
+
+# ─── Group5: хранилище ───────────────────────────────────────────
+
+[service:MinIO]
+link = "https://minio.example.com"
+icon = "database.svg"
+desc = "S3-хранилище"
+group = "Group5"

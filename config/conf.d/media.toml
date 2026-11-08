@@ -1,0 +1,49 @@
+# ─── Group1: медиа ────────────────────────────────────────────────
+
+[service:Jellyfin]
+link = "https://jellyfin.example.com"
+alt = "http://192.168.1.10:8096"
+icon = "film.svg"
+desc = "Медиатека, кино и сериалы"
+group = "Group1"
+
+[service:Plex]
+link = "https://plex.example.com"
+icon = "monitor.svg"
+desc = "Второй медиасервер"
+group = "Group1"
+priority = 2
+
+[service:Grafana]
+link = "https://grafana.example.com"
+alt = "http://192.168.1.10:3000"
+icon = "chart.svg"
+desc = "Метрики и дашборды"
+group = "Group1"
+priority = 1
+
+[service:Uptime Kuma]
+link = "http://192.168.1.10:3001"
+icon = "grid.svg"
+desc = "Мониторинг доступности"
+group = "Group1"
+
+[service:Portainer]
+link = "https://portainer.example.com"
+icon = "docker.svg"
+desc = "Контейнеры и стеки"
+group = "Group1"
+
+# ─── Group2: дом ──────────────────────────────────────────────────
+
+[service:Home Assistant]
+link = "http://192.168.1.10:8123"
+icon = "home.svg"
+desc = "Умный дом"
+group = "Group2"
+
+[service:Nextcloud]
+link = "https://cloud.example.com"
+icon = "cloud.svg"
+desc = "Файлы, календарь, контакты"
+group = "Group2"

@@ -1,0 +1,178 @@
+"""Turn a loaded Site into the view model the template renders.
+
+Rules implemented here:
+
+* a group's ``priority`` picks the column it lives in (1-based, wrapped by
+  ``system.cols``); groups without a priority fill columns left to right and
+  wrap onto the bottom of the first column again;
+* a group with ``link = Other`` is merged into Other's column and is stacked
+  right after it — the one exception to "one group, one column";
+* priorities may be missing or repeated: ties are broken by name;
+* services inside a group are ordered the same way (priority, then name).
+"""
+
+from __future__ import annotations
+
+import ipaddress
+
+from .config import Group, Service, Site, group_key
+
+ACCENTS = (
+    "#bd93f9",  # purple
+    "#ff79c6",  # pink
+    "#8be9fd",  # cyan
+    "#50fa7b",  # green
+    "#ffb86c",  # orange
+    "#f1fa8c",  # yellow
+    "#ff5555",  # red
+    "#6272a4",  # comment blue
+)
+
+LOCALISH_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0", "home", "homepage"}
+
+
+def sort_key(item) -> tuple:
+    """Missing priority sorts after explicit ones; equal priorities sort by name."""
+    priority = getattr(item, "priority", None)
+    return (priority is None, priority or 0, item.name.casefold())
+
+
+def host_is_local(host: str | None) -> bool:
+    """True when the page was requested over a LAN/localhost address."""
+    if not host:
+        return True
+    host = host.strip().lower()
+    if host in LOCALISH_HOSTS:
+        return True
+    bare = host[1:-1] if host.startswith("[") and host.endswith("]") else host
+    try:
+        address = ipaddress.ip_address(bare)
+    except ValueError:
+        # single-label hostnames ("nas", "server") are treated as local
+        return "." not in bare
+    return address.is_private or address.is_loopback or address.is_link_local
+
+
+def _root_of(key: str, groups: dict[str, Group], warnings: list[str]) -> str:
+    """Follow the ``link`` chain; cycles collapse onto their alphabetically first member."""
+    path: list[str] = []
+    current = key
+    while True:
+        group = groups.get(current)
+        target = group_key(group.link) if group and group.link else None
+        if target is None or target not in groups:
+            if target is not None:
+                warnings.append(
+                    f"группа {group.name!r} ссылается на неизвестную группу {group.link!r}"
+                )
+            return current
+        if target == current or target in path:
+            cycle = path[path.index(target):] + [target] if target in path else [current]
+            return min(cycle)
+        path.append(current)
+        current = target
+
+
+def _card_urls(service: Service, is_local: bool) -> tuple[str | None, str | None]:
+    """Pick the URL a card opens, plus an optional second one behind a chip.
+
+    ``alt`` is the local/alternative address: it wins while browsing from a
+    private address, ``link`` wins everywhere else.
+    """
+    link, alt = service.link, service.alt
+    if not link:
+        return alt, None
+    if not alt:
+        return link, None
+    return (alt, link) if is_local else (link, alt)
+
+
+def _initial(name: str) -> str:
+    for char in name:
+        if char.isalnum():
+            return char.upper()
+    return "?"
+
+
+def _build_service(service: Service, system, is_local: bool, resolve_icon) -> dict:
+    primary, secondary = _card_urls(service, is_local)
+    new_page = system.open_in_new_page if service.new_page is None else service.new_page
+    secondary_title = "Открыть локальную ссылку" if (secondary and secondary == service.alt) else "Открыть внешнюю ссылку"
+    return {
+        "name": service.name,
+        "desc": service.desc or "",
+        "url": primary or "#",
+        "url_alt": secondary,
+        "url_alt_title": secondary_title,
+        "icon": resolve_icon(service),
+        "initial": _initial(service.name),
+        "new_page": bool(new_page),
+        "priority": service.priority,
+    }
+
+
+def build_page(site: Site, is_local: bool = True, resolve_icon=None) -> dict:
+    """Assemble columns -> groups -> services, ready for the template."""
+    if resolve_icon is None:
+        resolve_icon = lambda service: service.icon_link  # noqa: E731
+    warnings = list(site.warnings)
+    groups = site.groups
+    cols = max(1, site.system.cols or 1)
+
+    roots = {key: _root_of(key, groups, warnings) for key in groups}
+    owners = [key for key in groups if roots[key] == key]
+
+    column_of: dict[str, int] = {}
+    next_column = 1
+    for key in sorted(owners, key=lambda k: sort_key(groups[k])):
+        group = groups[key]
+        if group.priority is not None:
+            column_of[key] = (group.priority - 1) % cols + 1
+        else:
+            column_of[key] = next_column
+            next_column = next_column % cols + 1
+    for key in groups:
+        column_of.setdefault(key, column_of.get(roots[key], 1))
+
+    services_by_group: dict[str, list[Service]] = {key: [] for key in groups}
+    for service in site.services:
+        services_by_group.setdefault(group_key(service.group), []).append(service)
+
+    columns: list[list[dict]] = [[] for _ in range(cols)]
+    ordered_keys = sorted(
+        groups,
+        key=lambda k: (
+            sort_key(groups[roots[k]]),
+            1 if k != roots[k] else 0,
+            sort_key(groups[k]),
+        ),
+    )
+    accent_of: dict[str, str] = {}
+    for index, key in enumerate(sorted(groups, key=lambda k: sort_key(groups[k]))):
+        accent_of[key] = ACCENTS[index % len(ACCENTS)]
+
+    for key in ordered_keys:
+        group = groups[key]
+        cards = [_build_service(service, site.system, is_local, resolve_icon)
+                 for service in sorted(services_by_group.get(key, []), key=sort_key)]
+        root = groups[roots[key]]
+        columns[column_of[key] - 1].append({
+            "name": group.name,
+            "accent": accent_of[roots[key]],
+            "root": root.name,
+            "merged": key != roots[key],
+            "declared": group.declared,
+            "services": cards,
+        })
+
+    return {
+        "title": site.system.title,
+        "cols": cols,
+        "mobile_cols": max(1, site.system.mobile_cols or 1),
+        "columns": [column for column in columns],
+        "group_count": len(groups),
+        "service_count": len(site.services),
+        "errors": site.errors,
+        "warnings": warnings,
+        "is_local": is_local,
+    }
