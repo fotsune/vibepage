@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-default-link-mode="{{ page.default_mode }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,6 +7,16 @@
   <title>{{ page.title }}</title>
   <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script>
+    /* выбранный режим ссылок должен примениться до первой отрисовки:
+       ?links=main|alt действует разово, иначе берём выбор из localStorage */
+    try {
+      var asked = new URLSearchParams(location.search).get("links");
+      var saved = localStorage.getItem("home.linkMode");
+      var want = (asked === "main" || asked === "alt") ? asked : saved;
+      if (want === "main" || want === "alt") { document.documentElement.dataset.linkMode = want; }
+    } catch (e) {}
+  </script>
 </head>
 <body>
   <div class="aurora" aria-hidden="true"></div>
@@ -25,6 +35,12 @@
     </a>
 
     <div class="topbar-tools">
+      <div class="linkmode" role="group" aria-label="Какая ссылка открывается по клику" title="Основная — link, alt — резервный адрес (внешний или локальный)">
+        <button type="button" class="linkmode-btn" data-mode="main"
+                aria-pressed="{{ 'true' if page.default_mode == 'main' else 'false' }}">основная</button>
+        <button type="button" class="linkmode-btn" data-mode="alt"
+                aria-pressed="{{ 'true' if page.default_mode == 'alt' else 'false' }}">alt</button>
+      </div>
       <label class="search" for="search">
         <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"/><path d="m16 16 4.2 4.2"/></svg>
         <input id="search" type="search" placeholder="Найти сервис…" autocomplete="off" spellcheck="false" aria-label="Поиск сервиса">
@@ -63,8 +79,9 @@
           {% for service in group.services %}
           <article class="card {% if service.url_alt %}card-with-alt{% endif %}" data-search="{{ (service.name ~ ' ' ~ service.desc ~ ' ' ~ group.name)|lower }}" style="--i: {{ loop.index0 }}">
             <a class="card-link" href="{{ service.url }}"
+               data-main="{{ service.href_main }}" data-alt="{{ service.href_alt }}"
                {% if service.new_page %}target="_blank" rel="noopener noreferrer"{% endif %}>
-              <span class="card-icon">
+              <span class="card-icon"{% if service.icon_color %} style="--icon-color: {{ service.icon_color }}"{% endif %}>
                 {% if service.icon and service.icon.svg %}{{ service.icon.svg|safe }}
                 {% elif service.icon %}<img src="{{ service.icon.url }}" alt="" loading="lazy" data-fallback="{{ service.initial }}">
                 {% else %}<span class="placeholder">{{ service.initial }}</span>{% endif %}
@@ -76,6 +93,7 @@
             </a>
             {% if service.url_alt %}
             <a class="card-alt" href="{{ service.url_alt }}" title="{{ service.url_alt_title }}"
+               data-main="{{ service.href_alt }}" data-alt="{{ service.href_main }}"
                {% if service.new_page %}target="_blank" rel="noopener noreferrer"{% endif %}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 5.5h9v9"/><path d="M18.5 5.5 8 16"/><path d="M6 9.5H4.8a.8.8 0 0 0-.8.8v8.9a.8.8 0 0 0 .8.8h8.9a.8.8 0 0 0 .8-.8V19"/></svg>
             </a>
@@ -101,7 +119,7 @@
     <span class="foot-sep">·</span>
     <span>{{ page.group_count }} {{ page.groups_label }}</span>
     <span class="foot-sep">·</span>
-    <span class="foot-muted">{% if page.is_local %}локальное подключение: приоритет у alt{% else %}внешнее подключение: приоритет у link{% endif %}</span>
+    <span class="foot-muted">{% if page.is_local %}локальное подключение: по умолчанию alt{% else %}внешнее подключение: по умолчанию основная{% endif %}</span>
     <span class="foot-sep">·</span>
     <a class="foot-refresh" href="/">обновить</a>
   </footer>

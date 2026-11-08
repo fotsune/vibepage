@@ -1,6 +1,6 @@
-/* Home — the only client-side code: search filter, clock, broken-icon fallback.
-   The page itself is rendered by the server on every request; no config is
-   ever fetched from here. */
+/* Home — the only client-side code: search filter, clock, link-mode switch and
+   broken-icon fallback. The page itself is rendered by the server on every
+   request; no config is ever fetched from here. */
 (function () {
   "use strict";
 
@@ -49,15 +49,50 @@
     }
   });
 
+  /* --------------------------------------------- основная ссылка или alt */
+  /* Каждая ссылка несёт оба адреса: data-main и data-alt (alt пуст, если
+     у сервиса он не задан — тогда всегда открывается основная). */
+  var MODE_KEY = "home.linkMode";
+  var switchButtons = Array.prototype.slice.call(document.querySelectorAll(".linkmode-btn"));
+  var links = Array.prototype.slice.call(document.querySelectorAll(".card-link, .card-alt"));
+  /* приоритет: ?links= / localStorage (ставит шапка), иначе выбор сервера */
+  var root = document.documentElement;
+  var initial = root.dataset.linkMode || root.dataset.defaultLinkMode || "main";
+  var mode = initial === "alt" ? "alt" : "main";
+
+  function applyMode(next, remember) {
+    mode = next === "alt" ? "alt" : "main";
+    root.dataset.linkMode = mode;
+    links.forEach(function (link) {
+      var target = mode === "alt" ? link.dataset.alt : link.dataset.main;
+      if (target) { link.setAttribute("href", target); }
+    });
+    switchButtons.forEach(function (button) {
+      button.setAttribute("aria-pressed", button.dataset.mode === mode ? "true" : "false");
+    });
+    if (remember) {
+      try { localStorage.setItem(MODE_KEY, mode); } catch (e) {}
+    }
+  }
+
+  switchButtons.forEach(function (button) {
+    button.addEventListener("click", function () {
+      if (button.dataset.mode === mode) { return; }
+      applyMode(button.dataset.mode, true);
+    });
+  });
+  if (switchButtons.length) { applyMode(mode, false); }
+
   /* --------------------------------------------------------------- часы */
   var clockTime = document.getElementById("clock-time");
   var clockDate = document.getElementById("clock-date");
-  var timeFormat = { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false };
+  var timeFormat = { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true };
   var dateFormat = { weekday: "short", day: "numeric", month: "short" };
 
   function tick() {
     var now = new Date();
-    if (clockTime) { clockTime.textContent = now.toLocaleTimeString("ru-RU", timeFormat); }
+    /* en-US даёт именно AM/PM — русская локаль отдаёт «ДП/ПП» */
+    if (clockTime) { clockTime.textContent = now.toLocaleTimeString("en-US", timeFormat); }
     if (clockDate) { clockDate.textContent = now.toLocaleDateString("ru-RU", dateFormat); }
   }
   tick();

@@ -577,3 +577,46 @@ a { color: inherit; text-decoration: none; }
   *, *::before, *::after { animation-duration: 0.001s !important; transition-duration: 0.001s !important; }
   .aurora { animation: none; }
 }
+
+/* --------------------------------------------- переключатель ссылок */
+
+.linkmode {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: rgba(32, 34, 44, 0.72);
+}
+
+.linkmode-btn {
+  appearance: none;
+  border: 0;
+  cursor: pointer;
+  padding: 5px 9px;
+  border-radius: 8px;
+  font-family: var(--sans);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: transparent;
+  transition: color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.linkmode-btn:hover { color: var(--fg-soft); background: rgba(98, 114, 164, 0.18); }
+
+.linkmode-btn[aria-pressed="true"] {
+  color: var(--purple);
+  background: rgba(189, 147, 249, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(189, 147, 249, 0.34);
+}
+
+.linkmode-btn:focus-visible { outline: 2px solid rgba(189, 147, 249, 0.55); outline-offset: 1px; }
+
+/* -------------------------------------------------------- цвет иконки */
+
+.card-icon { color: var(--icon-color, var(--accent)); }
+.card-icon svg, .card-icon img { filter: none; }
