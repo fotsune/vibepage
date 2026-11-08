@@ -1,0 +1,6 @@
+# ровные переводы строк: Dockerfile с CRLF не собирается, run.sh не запускается
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.png binary
+*.jpg binary
+*.ico binary
