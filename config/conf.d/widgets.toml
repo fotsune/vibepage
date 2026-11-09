@@ -7,10 +7,11 @@
 # Ключ fields = [...] задаёт, какие поля показывать и в каком порядке:
 #   fields = ["enabled", "disabled", "total"]   → включено, выключено, всего
 #   fields = ["total", "disabled", "enabled"]   → всего, выключено, включено
-# Без fields поля идут в порядке типа; в карточку влезает не больше четырёх.
+# Без fields поля идут в порядке типа; в карточку влезает не больше трёх.
+# Если в fields перечислено больше — берутся первые три по порядку.
 
 [group:Widgets]
-priority = 4
+priority = 5
 color = cyan
 
 # ─── Portainer: счётчики контейнеров ─────────────────────────────
@@ -27,7 +28,7 @@ ping = "192.168.0.112:9000"
 type = "portainer"
 url = "https://192.168.0.112:9000"
 env = 1                         # номер окружения (endpoint) в Portainer
-key = "${PORTAINER_KEY}"        # секрет берётся из окружения, а не из репозитория
+key = "${PORTAINER_KEY}"        # секрет берётся из config/.env, а не из репозитория
 fields = ["running", "stopped", "total"]
 
 # ─── AdGuard Home: DNS и блокировка рекламы ──────────────────────
@@ -43,9 +44,9 @@ ping = "192.168.0.112:59991"
 [widget:adguard]
 type = "adguard"
 url = "http://192.168.0.112:59991"
-username = "admin"
-password = "adminadmin"
-fields = ["queries", "blocked", "filtered", "latency"]
+username = "${ADGUARD_USERNAME}"       # секреты — в config/.env, не в git
+password = "${ADGUARD_PASSWORD}"
+fields = ["queries", "blocked", "filtered"]
 
 # ─── Nginx Proxy Manager: прокси-хосты ───────────────────────────
 
@@ -60,8 +61,8 @@ ping = "192.168.0.112:59990"
 [widget:npm]
 type = "npm"
 url = "http://192.168.0.112:59990"
-username = "admin@gmail.com"
-password = "adminadmin"
+username = "${NPM_USERNAME}"
+password = "${NPM_PASSWORD}"
 fields = ["enabled", "disabled", "total"]
 
 # ─── Minecraft: жив ли сервер ───────────────────────────────────
@@ -92,7 +93,7 @@ ping = "192.168.0.112:59992"
 [widget:changedetection]
 type = "changedetectionio"
 url = "http://192.168.0.112:59992"
-key = "6213cc2e85fc59be129d1bc8512a0e7e"   # API-ключ из настроек changedetection.io
+key = "${CHANGEDETECTION_KEY}"   # API-ключ из настроек changedetection.io
 fields = ["diffsDetected", "totalObserved"]
 
 # ─── Uptime Kuma: страница статуса ───────────────────────────────
@@ -109,7 +110,7 @@ ping = "192.168.0.112:59994"
 type = "uptimekuma"
 url = "http://192.168.0.112:59994"
 slug = "statuspageslug"
-fields = ["up", "down", "uptime", "incident"]
+fields = ["up", "down", "uptime"]
 
 # ─── Your Spotify: что слушал ───────────────────────────────────
 
@@ -140,5 +141,5 @@ ping = "192.168.0.112:59993"
 [widget:watchtower]
 type = "watchtower"
 url = "http://192.168.0.112:59993"
-key = "demotoken"               # WATCHTOWER_HTTP_API_TOKEN
+key = "${WATCHTOWER_KEY}"        # WATCHTOWER_HTTP_API_TOKEN
 fields = ["containers_scanned", "containers_updated", "containers_failed"]

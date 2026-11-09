@@ -321,6 +321,10 @@ def mc_frame(status: dict) -> bytes:
     return widgets._varint(len(packet)) + packet
 
 
+ADGUARD_STATS = {"num_dns_queries": 10, "num_blocked_filtering": 4, "num_replaced_safebrowsing": 1,
+                 "num_replaced_safesearch": 1, "num_replaced_parental": 2, "avg_processing_time": 0.002}
+
+
 class TypedWidgetTests(WidgetTestCase):
     def make_site(self, widget_body: str):
         path = os.path.join(self.tmp.name, "typed.toml")
@@ -373,18 +377,24 @@ class TypedWidgetTests(WidgetTestCase):
         self.assertEqual([field["key"] for field in widgets.fields_for(site.widgets["w"])],
                          ["running", "stopped", "total"])
 
-    def test_four_fields_fit(self):
+    def test_three_fields_fit(self):
         body = ('type = "adguard"\nurl = "http://adguard"\nusername = "admin"\npassword = "pw"\n'
-                'fields = ["queries", "blocked", "filtered", "latency"]\n')
-        stats = {"num_dns_queries": 10, "num_blocked_filtering": 4, "num_replaced_safebrowsing": 1,
-                 "num_replaced_safesearch": 1, "num_replaced_parental": 2, "avg_processing_time": 0.002}
+                'fields = ["queries", "blocked", "latency"]\n')
+        stats = ADGUARD_STATS
         seen = []
         state = self.run_typed(body, {"/control/stats": stats}, seen)
         self.assertTrue(state["ok"], state.get("error"))
-        self.assertEqual(self.values(state), {"queries": 10, "blocked": 4, "filtered": 4, "latency": "2 мс"})
+        self.assertEqual(self.values(state), {"queries": 10, "blocked": 4, "latency": "2 мс"})
         self.assertIn("Basic ", seen[0].headers.get("Authorization"))
 
-    def test_more_than_max_fields_is_truncated_and_reported(self):
+    def test_extra_fields_are_dropped_keeping_the_first_three(self):
+        body = ('type = "adguard"\nurl = "http://adguard"\nusername = "admin"\npassword = "pw"\n'
+                'fields = ["queries", "blocked", "filtered", "latency"]\n')
+        state = self.run_typed(body, {"/control/stats": ADGUARD_STATS})
+        self.assertTrue(state["ok"], state.get("error"))
+        self.assertEqual(self.values(state), {"queries": 10, "blocked": 4, "filtered": 4})
+
+    def test_more_than_max_fields_takes_the_first_three(self):
         class Wide(widgets.Spec):
             TITLE = "Wide"
             FIELDS = (("a", "а"), ("b", "б"), ("c", "в"), ("d", "г"), ("e", "д"))
@@ -395,10 +405,10 @@ class TypedWidgetTests(WidgetTestCase):
         widgets.REGISTRY["wide"] = Wide()
         self.addCleanup(widgets.REGISTRY.pop, "wide", None)
         site = self.make_site('type = "wide"\nfields = ["a", "b", "c", "d", "e"]\n')
-        self.assertEqual(widgets.MAX_FIELDS, 4)
+        self.assertEqual(widgets.MAX_FIELDS, 3)
         self.assertEqual([field["key"] for field in widgets.fields_for(site.widgets["w"])],
-                         ["a", "b", "c", "d"])
-        self.assertTrue(any("полей больше 4" in warning for warning in site.warnings), site.warnings)
+                         ["a", "b", "c"])
+        self.assertEqual(site.warnings, [])
 
     def test_unknown_field_is_reported_and_skipped(self):
         site = self.make_site('type = "portainer"\nurl = "http://p"\nkey = "k"\n'
@@ -456,12 +466,11 @@ class TypedWidgetTests(WidgetTestCase):
         beats = {"heartbeatList": {"1": [{"status": 1}], "2": [{"status": 1}, {"status": 0}]},
                  "uptimeList": {"1_24": 1.0, "2_24": 0.5}}
         state = self.run_typed('type = "uptimekuma"\nurl = "http://kuma"\nslug = "s"\n'
-                               'fields = ["up", "down", "uptime", "incident"]\n',
+                               'fields = ["up", "down", "incident"]\n',
                                {"/api/status-page/heartbeat/": beats, "/api/status-page/": page})
         self.assertTrue(state["ok"], state.get("error"))
         self.assertEqual(self.values(state)["up"], 1)
         self.assertEqual(self.values(state)["down"], 1)
-        self.assertEqual(self.values(state)["uptime"], "75.0%")
         self.assertIsNone(self.values(state)["incident"])
 
     def test_uptimekuma_incident_age_in_hours(self):

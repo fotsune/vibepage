@@ -38,7 +38,7 @@ PING_TTL = 5.0
 WIDGET_TTL = 10.0
 DEFAULT_TIMEOUT = 4.0
 MAX_WORKERS = 8
-MAX_FIELDS = 4            # сколько полей влезает в карточку
+MAX_FIELDS = 3            # сколько полей влезает в карточку
 MC_DEFAULT_PORT = 25565
 
 
@@ -605,7 +605,7 @@ def validate(widget) -> list[str]:
 
 
 def _field_problems(widget, spec) -> list[str]:
-    """Понятная ошибка, если в fields опечатка или полей больше, чем влезает."""
+    """Понятная ошибка, если в fields опечатка в имени поля."""
     raw = widget.options.get("fields")
     if raw in (None, ""):
         return []
@@ -617,10 +617,6 @@ def _field_problems(widget, spec) -> list[str]:
     if unknown:
         problems.append(f"виджет {widget.name!r} ({widget.type}): неизвестные поля "
                         f"{', '.join(unknown)} — известны {', '.join(known)}")
-    valid = [key for key in dict.fromkeys(requested) if key in known]
-    if len(valid) > MAX_FIELDS:
-        problems.append(f"виджет {widget.name!r} ({widget.type}): полей больше {MAX_FIELDS}, "
-                        f"будут видны {', '.join(valid[:MAX_FIELDS])}")
     return problems
 
 
