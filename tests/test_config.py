@@ -1,6 +1,7 @@
 """Тесты разбора TOML-like конфига и сборки модели."""
 
 import os
+import shutil
 import tempfile
 import unittest
 
@@ -175,6 +176,48 @@ class LoadTests(unittest.TestCase):
         )
         site = load(os.path.join(self.root, "homepage.toml"))
         self.assertTrue(any("nowhere" in error for error in site.errors))
+
+
+class ExampleConfigTests(unittest.TestCase):
+    """config/homepage.toml.example — образец, который обязан оставаться рабочим."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.example = os.path.join(root, "config", "homepage.toml.example")
+        os.mkdir(os.path.join(self.tmp.name, "conf.d"))
+        shutil.copytree(os.path.join(root, "config", "icons"),
+                        os.path.join(self.tmp.name, "icons"))
+        self.path = os.path.join(self.tmp.name, "homepage.toml")
+        shutil.copy(self.example, self.path)
+
+    def test_example_loads_without_a_single_complaint(self):
+        site = load(self.path)
+        self.assertEqual(site.errors, [])
+        self.assertEqual(site.warnings, [])
+        # дефолты, о которых говорит образец, — те же, что в коде
+        self.assertEqual(site.system.poll, 10)        # state_interval
+        self.assertEqual(site.system.group_cols, 3)
+        self.assertEqual(site.system.cols, 3)
+
+    def test_example_names_every_widget_type(self):
+        from hp import widgets
+        site = load(self.path)
+        declared = {widgets.canonical_type(widget.type) for widget in site.widgets.values()}
+        self.assertEqual(declared, set(widgets.REGISTRY))
+
+    def test_example_keeps_the_visible_page_quiet(self):
+        # ни один адрес образца не обязан быть живым: пинг и виджеты чужих
+        # серверов в образце закомментированы, так что копия не мигает
+        # красными точками, а сразу показывает карточки
+        site = load(self.path)
+        by_name = {service.name: service for service in site.services}
+        self.assertEqual(by_name["Grafana"].alt, "http://192.168.1.10:3000")
+        self.assertIsNone(by_name["Grafana"].ping)
+        self.assertTrue(by_name["Grafana"].new_page)
+        self.assertEqual(by_name["Jellyfin"].group, "Default")
+        self.assertEqual(by_name["Этот хост"].widgets, ["cpu", "ram", "disk"])
 
 
 if __name__ == "__main__":
