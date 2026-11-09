@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import traceback
 
 from flask import Flask, abort, make_response, render_template, request, send_file
@@ -123,6 +124,16 @@ def main() -> None:
     args = parser.parse_args()
     if args.config:
         os.environ["HOMEPAGE_CONFIG"] = os.path.abspath(args.config)
+    print(
+        "homepage: %s · код %s · конфиг %s · secrets %s"
+        % (
+            sys.executable,
+            HERE,
+            os.environ.get("HOMEPAGE_CONFIG") or DEFAULT_CONFIG,
+            "есть" if os.path.exists(ENV_FILE) else "нет",
+        ),
+        flush=True,
+    )
     app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
 
 
