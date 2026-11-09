@@ -145,8 +145,9 @@
       ["ok", "slow", "down", "unknown"].forEach(function (name) {
         node.classList.toggle("state-" + name, name === state);
       });
-      node.title = "ping " + ping.target + ": " + state +
-        (ping.ms === null || ping.ms === undefined ? "" : " (" + ping.ms + " мс)");
+      var words = { ok: "отвечает", slow: "медленно", down: "не отвечает" };
+      node.title = "пинг: " + (words[state] || "нет данных") +
+        (ping.ms === null || ping.ms === undefined ? "" : " · " + ping.ms + " мс");
     }
 
     function paintWidget(card, widget) {

@@ -159,8 +159,9 @@ def _ping_view(service: Service) -> dict | None:
     if not service.ping:
         return None
     state = widget_lib.peek_ping(service.ping, float(service.ping_timeout or 2.0))
-    return {"target": service.ping, "state": (state or {}).get("state", "unknown"),
-            "ms": (state or {}).get("ms"), "at": (state or {}).get("at", 0)}
+    return {"state": (state or {}).get("state", "unknown"),
+            "ms": (state or {}).get("ms"), "title": widget_lib.ping_title(state),
+            "at": (state or {}).get("at", 0)}
 
 
 def _build_service(service: Service, system, prefer_alt: bool, resolve_icon, accent: str,

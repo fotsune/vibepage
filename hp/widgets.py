@@ -187,6 +187,21 @@ def ping(target: str, timeout: float = 2.0) -> dict:
     return {"state": "ok" if ms <= PING_OK_MS else "slow", "ms": ms, "target": f"{host}:{port}"}
 
 
+PING_WORDS = {"ok": "отвечает", "slow": "медленно", "down": "не отвечает"}
+
+
+def ping_title(state) -> str:
+    """Подсказка к точке пинга без адреса: клиенту незачем знать, куда мы стучимся."""
+    word = PING_WORDS.get((state or {}).get("state") or "unknown", "нет данных")
+    ms = (state or {}).get("ms")
+    return "пинг: " + word + (f" · {ms} мс" if ms is not None else "")
+
+
+def wire_ping(state: dict) -> dict:
+    """Только состояние и задержка — ни адреса, ни текста ошибки с хостом."""
+    return {"state": (state or {}).get("state") or "unknown", "ms": (state or {}).get("ms")}
+
+
 # --------------------------------------------------------------------------- #
 # кэш и снимок
 # --------------------------------------------------------------------------- #
@@ -270,7 +285,8 @@ def snapshot(site, online: bool = True) -> dict:
         for kind, (key, _producer, _ttl) in item.items():
             entry = _peek(key)
             if entry is not None:
-                card[kind] = entry.value
+                # пинг отдаём без адреса: клиент не должен знать, куда мы стучимся
+                card[kind] = wire_ping(entry.value) if kind == "ping" else entry.value
                 card[f"{kind}_at"] = round(entry.at, 3)
         if card:                      # карточка без данных не занимает места
             cards[identity] = card

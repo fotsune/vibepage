@@ -687,7 +687,7 @@ body.no-header .board { padding-top: clamp(22px, 2.8vw, 36px); }
 .card-with-widget .card-link { border-radius: var(--radius) var(--radius) 0 0; }
 
 .card-widget {
-  padding: 8px 12px 9px;
+  padding: 5px 10px 6px;
   border-top: 1px solid var(--line-soft);
   border-top-color: color-mix(in srgb, var(--accent) 18%, transparent);
   background: color-mix(in srgb, var(--accent) 5%, transparent);
@@ -698,25 +698,27 @@ body.no-header .board { padding-top: clamp(22px, 2.8vw, 36px); }
 .widget-fields {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: auto;      /* по ширине подписи: «остановлено» не режется */
-  justify-content: space-between;
-  gap: 6px;
+  grid-auto-columns: minmax(max-content, 1fr);   /* равные доли, но не уже содержимого */
+  justify-content: center;      /* вся группа по центру, а не по краям */
+  gap: 0;
 }
 
 .widget-field {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1px;
+  justify-content: center;
+  gap: 0;
   min-width: 0;
-  padding-left: 8px;
+  padding: 0 10px;
+  text-align: center;
   border-left: 1px solid var(--line-soft);
 }
 
-.widget-field:first-child { padding-left: 0; border-left: 0; }
+.widget-field:first-child { border-left: 0; }
 
 .widget-value {
-  font: 600 15px/1.15 var(--mono);
+  font: 600 14px/1.1 var(--mono);
   color: var(--fg-soft);
   letter-spacing: 0.2px;
   font-variant-numeric: tabular-nums;
@@ -728,7 +730,8 @@ body.no-header .board { padding-top: clamp(22px, 2.8vw, 36px); }
 .widget-value.tone-idle { color: var(--fg-soft); }
 
 .widget-label {
-  font-size: 9.5px;
+  font-size: 9px;
+  line-height: 1.25;
   letter-spacing: 0.2px;
   text-transform: uppercase;
   color: var(--muted);
@@ -741,7 +744,8 @@ body.no-header .board { padding-top: clamp(22px, 2.8vw, 36px); }
 .widget-error {
   margin: 0;
   font-size: 11px;
-  line-height: 1.35;
+  line-height: 1.3;
+  text-align: center;
   color: var(--muted);
 }
 

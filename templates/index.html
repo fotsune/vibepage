@@ -101,7 +101,7 @@
               </span>
               {% if service.ping %}
               <span class="card-ping state-{{ service.ping.state }}" data-ping-state="{{ service.ping.state }}"
-                    title="ping {{ service.ping.target }}: {{ service.ping.state }}{% if service.ping.ms %} ({{ service.ping.ms }} мс){% endif %}">
+                    title="{{ service.ping.title }}">
                 <span class="ping-dot" aria-hidden="true"></span>
               </span>
               {% endif %}

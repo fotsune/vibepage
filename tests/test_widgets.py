@@ -228,6 +228,30 @@ class PageAndRouteTests(WidgetTestCase):
         fields = {field["key"]: field["value"] for field in data["cards"]["Infra::Box"]["widget"]["fields"]}
         self.assertEqual(fields, {"running": 1, "stopped": 1, "total": 2})
 
+    def test_ping_state_never_exposes_the_target(self):
+        with mock.patch.object(widgets, "urlopen", fake_urlopen([{"State": "running"}])), \
+                mock.patch.object(widgets, "ping", lambda target, timeout=2.0: {"state": "ok", "ms": 3, "target": target}):
+            data = json.loads(self.client.get("/api/state").get_data(as_text=True))
+        self.assertEqual(data["cards"]["Infra::Box"]["ping"], {"state": "ok", "ms": 3})
+        self.assertNotIn("192.0.2.10", json.dumps(data))
+
+    def test_ping_tooltip_is_human_and_has_no_address(self):
+        with mock.patch.object(widgets, "urlopen", fake_urlopen([{"State": "running"}])), \
+                mock.patch.object(widgets, "ping", lambda target, timeout=2.0: {"state": "slow", "ms": 900, "target": target}):
+            body = self.client.get("/").get_data(as_text=True)
+        # адрес может быть виден в ссылке карточки — но не в точке пинга
+        dot = body[body.index('class="card-ping'):][:200]
+        self.assertIn('title="пинг: нет данных"', dot)     # до первого ответа — честное «нет данных»
+        self.assertNotIn("192.0.2.10", dot)
+
+    def test_ping_tooltip_words(self):
+        self.assertEqual(widgets.ping_title({"state": "ok", "ms": 12}), "пинг: отвечает · 12 мс")
+        self.assertEqual(widgets.ping_title({"state": "slow", "ms": 900}), "пинг: медленно · 900 мс")
+        self.assertEqual(widgets.ping_title({"state": "down", "ms": None}), "пинг: не отвечает")
+        self.assertEqual(widgets.ping_title(None), "пинг: нет данных")
+        self.assertEqual(widgets.wire_ping({"state": "ok", "ms": 4, "target": "h:1", "error": "x"}),
+                         {"state": "ok", "ms": 4})
+
     def test_api_state_survives_broken_config(self):
         with open(self.path, "w", encoding="utf-8") as handle:
             handle.write("это не конфиг\n")
