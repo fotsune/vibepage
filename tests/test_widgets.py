@@ -1214,8 +1214,11 @@ class QbittorrentTests(WidgetTestCase):
         login = seen[0]
         self.assertIn(b"username=admin", login.data)
         self.assertIn(b"password=secret", login.data)
-        self.assertEqual(login.get_header("Referer"), "http://qbt:8080/")   # как браузер
-        self.assertEqual(login.get_header("Origin"), "http://qbt:8080")
+        # порт из Host, Origin и Referer уходит: 5.x отвечает на «host:port» 401
+        self.assertEqual(login.get_header("Host"), "qbt")
+        self.assertEqual(login.get_header("Referer"), "http://qbt/")
+        self.assertEqual(login.get_header("Origin"), "http://qbt")
+        self.assertEqual(seen[1].get_header("Host"), "qbt")
 
     def test_wrong_password_is_one_short_phrase(self):
         site = self.make_site(self.BODY)

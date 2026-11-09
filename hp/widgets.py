@@ -687,8 +687,17 @@ def _rate(value) -> str:
 
 
 def _browser_headers(base: str) -> dict:
-    """qBittorrent сверяет Referer и Origin у POST — шлём то же, что слал бы браузер."""
-    return {"Referer": base + "/", "Origin": base}
+    """Заголовки, которые слал бы браузер: Referer и Origin у POST, Host — всегда.
+
+    5.x сверяет Host со своим адресом и на «host:port» отвечает 401, поэтому порт
+    из Host убираем; Referer и Origin остаются как есть.
+    """
+    parts = urlsplit(base)
+    host = parts.hostname or ""
+    if ":" in host:
+        host = f"[{host}]"          # IPv6 обратно в скобки
+    origin = f"{parts.scheme}://{host}"
+    return {"Host": host, "Referer": origin + "/", "Origin": origin}
 
 
 class Qbittorrent(Spec):
@@ -722,12 +731,12 @@ class Qbittorrent(Spec):
                                 **_browser_headers(base)),
                            data=body, timeout=timeout, opener=opener)
         except WidgetFailure as error:
-            if str(error).startswith("Access denied"):   # 401 бывает и от бана IP
-                raise WidgetFailure("Access denied: wrong password, or the address is "
-                                    "banned after failed logins") from error
+            if str(error).startswith("Access denied"):   # 401 — логин не тот
+                raise WidgetFailure("Access denied: check login and password (401 also "
+                                    "comes from a Host header qBittorrent rejects)") from error
             raise
         answer = raw.decode("utf-8", "replace").strip()
-        if answer and answer != "Ok.":        # «Fails.» — или бан, или пароль не тот
+        if answer and answer != "Ok.":        # «Fails.» — пароль не тот
             raise WidgetFailure("Access denied: check login and password")
         _QB_SESSIONS[base] = (opener, time.monotonic() + QB_TTL)
         return opener, {}
