@@ -491,7 +491,10 @@ def _make_widget(section: dict, where: str, warnings: list[str]) -> Widget:
     kind = (_as_str(raw_type) or "").strip().lower()
     options: dict = {}
     for key, value in values.items():
-        options[key] = _expand(value) if isinstance(value, str) else value
+        if isinstance(value, list):
+            options[key] = [_expand(str(item)) if isinstance(item, str) else item for item in value]
+        else:
+            options[key] = _expand(value) if isinstance(value, str) else value
     return Widget(name=section["name"], type=kind, options=options, source=section["source"])
 
 

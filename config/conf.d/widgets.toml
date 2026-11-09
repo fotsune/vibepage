@@ -3,17 +3,142 @@
 # строкой widget = "имя". Сервер опрашивает источник по кэшу и отдаёт
 # готовые числа на /api/state; клиент раз в [system] poll секунд обновляет
 # нарисованное.
+#
+# Ключ fields = [...] задаёт, какие поля показывать и в каком порядке:
+#   fields = ["enabled", "disabled", "total"]   → включено, выключено, всего
+#   fields = ["total", "disabled", "enabled"]   → всего, выключено, включено
+# Без fields поля идут в порядке типа; в карточку влезает не больше четырёх.
 
-[widget:portainer]              # внутреннее имя, на него ссылается service.widget
-type = "portainer"              # тип: что и как спрашивать
-url = "https://portainer.example.com:9443"
+[group:Widgets]
+priority = 4
+color = cyan
+
+# ─── Portainer: счётчики контейнеров ─────────────────────────────
+
+[service:Portainer]
+link = "https://192.168.0.112:9000"
+icon = "sdi:portainer"
+desc = "Контейнеры и стеки"
+group = "Widgets"
+widget = "portainer"
+ping = "192.168.0.112:9000"
+
+[widget:portainer]
+type = "portainer"
+url = "https://192.168.0.112:9000"
 env = 1                         # номер окружения (endpoint) в Portainer
 key = "${PORTAINER_KEY}"        # секрет берётся из окружения, а не из репозитория
+fields = ["running", "stopped", "total"]
 
-# Второй пример: тот же тип, другое окружение.
-# [widget:portainer-test]
-# type = "portainer"
-# url = "https://192.168.0.112:9000"
-# env = 1
-# key = "${PORTAINER_TEST_KEY}"
-# verify_tls = true              # по умолчанию самоподписанный сертификат принимается
+# ─── AdGuard Home: DNS и блокировка рекламы ──────────────────────
+
+[service:AdGuard]
+link = "http://192.168.0.112:59991"
+icon = "sdi:adguard"
+desc = "DNS и блокировка рекламы"
+group = "Widgets"
+widget = "adguard"
+ping = "192.168.0.112:59991"
+
+[widget:adguard]
+type = "adguard"
+url = "http://192.168.0.112:59991"
+username = "admin"
+password = "adminadmin"
+fields = ["queries", "blocked", "filtered", "latency"]
+
+# ─── Nginx Proxy Manager: прокси-хосты ───────────────────────────
+
+[service:NPM]
+link = "http://192.168.0.112:59990"
+icon = "sdi:nginxproxymanager"
+desc = "Прокси и сертификаты"
+group = "Widgets"
+widget = "npm"
+ping = "192.168.0.112:59990"
+
+[widget:npm]
+type = "npm"
+url = "http://192.168.0.112:59990"
+username = "admin@gmail.com"
+password = "adminadmin"
+fields = ["enabled", "disabled", "total"]
+
+# ─── Minecraft: жив ли сервер ───────────────────────────────────
+
+[service:Minecraft]
+link = "udp://192.168.0.11:25565"
+icon = "sdi:minecraft"
+desc = "Новый мир"
+group = "Widgets"
+widget = "minecraft"
+ping = "192.168.0.11:25565"
+
+[widget:minecraft]
+type = "minecraft"
+url = "udp://192.168.0.11:25565"     # host:port или udp://host:port
+fields = ["players", "version", "status"]
+
+# ─── changedetection.io: наблюдения за страницами ────────────────
+
+[service:Changedetection]
+link = "http://192.168.0.112:59992"
+icon = "sdi:changedetection"
+desc = "Наблюдения за страницами"
+group = "Widgets"
+widget = "changedetection"
+ping = "192.168.0.112:59992"
+
+[widget:changedetection]
+type = "changedetectionio"
+url = "http://192.168.0.112:59992"
+key = "6213cc2e85fc59be129d1bc8512a0e7e"   # API-ключ из настроек changedetection.io
+fields = ["diffsDetected", "totalObserved"]
+
+# ─── Uptime Kuma: страница статуса ───────────────────────────────
+
+[service:UptimeKuma]
+link = "http://192.168.0.112:59994/status/statuspageslug"
+icon = "sdi:uptimekuma"
+desc = "Страница статуса"
+group = "Widgets"
+widget = "uptimekuma"
+ping = "192.168.0.112:59994"
+
+[widget:uptimekuma]
+type = "uptimekuma"
+url = "http://192.168.0.112:59994"
+slug = "statuspageslug"
+fields = ["up", "down", "uptime", "incident"]
+
+# ─── Your Spotify: что слушал ───────────────────────────────────
+
+[service:YourSpotify]
+link = "https://spoti-api.example.com"
+icon = "sdi:spotify"
+desc = "Статистика прослушиваний"
+group = "Widgets"
+widget = "yourspotify"
+
+[widget:yourspotify]
+type = "yourspotify"
+url = "${YOURSPOTIFY_URL}"
+key = "${YOURSPOTIFY_KEY}"
+interval = "month"             # day, week (по умолчанию), month, year или all
+fields = ["songs", "time", "artists"]
+
+# ─── Watchtower: последнее обновление контейнеров ────────────────
+
+[service:Watchtower]
+link = "http://192.168.0.112:59993"
+icon = "sdi:watchtower"
+desc = "Автообновление контейнеров"
+group = "Widgets"
+widget = "watchtower"
+ping = "192.168.0.112:59993"
+
+[widget:watchtower]
+type = "watchtower"
+url = "http://192.168.0.112:59993"
+key = "demotoken"               # WATCHTOWER_HTTP_API_TOKEN
+fields = ["containers_scanned", "containers_updated", "containers_failed"]

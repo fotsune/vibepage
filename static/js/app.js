@@ -213,6 +213,7 @@
     }
 
     applyState(live);
+    refresh();      // первый запрос сразу: кэш на сервере общий, лишнего похода в чужие API нет
     schedule();
     document.addEventListener("visibilitychange", function () {
       if (!document.hidden) refresh();
