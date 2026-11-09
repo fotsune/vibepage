@@ -2,18 +2,23 @@
 # ────────────────────────────────────────────────────────────────────
 #  Home — образ «только то, что нужно»: зависимости ставятся в отдельном
 #  слое и без pip, в финальный образ попадают сам Python, пакеты и код.
-#  Итог: ~60 МБ, один процесс, без компиляторов и временных файлов.
+#  Итог: ~62 МБ, один процесс, без компиляторов и временных файлов:
+#  gcc живёт только в слое сборки (psutil собирается из исходников).
 # ────────────────────────────────────────────────────────────────────
 FROM python:3.12-alpine AS deps
 
 ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Flask и его зависимости — чистый Python либо musllinux-колёса,
-# компилятор в образе не нужен.
+# Flask и его зависимости — чистый Python либо musllinux-колёса. А вот
+# psutil (за ним — виджеты sysinfo/disk) musllinux-колёс не выпускает вовсе:
+# на alpine он всегда собирается из исходников, поэтому gcc, musl-dev и
+# linux-headers нужны ровно на время установки и удаляются в том же слое.
 RUN python -m venv /opt/venv
 COPY requirements.txt /tmp/requirements.txt
-RUN /opt/venv/bin/pip install -r /tmp/requirements.txt \
+RUN apk add --no-cache --virtual .build-deps gcc musl-dev linux-headers \
+ && /opt/venv/bin/pip install -r /tmp/requirements.txt \
+ && apk del .build-deps \
  && rm -rf /tmp/requirements.txt \
            /opt/venv/lib/python3.*/site-packages/pip \
            /opt/venv/lib/python3.*/site-packages/pip-* \

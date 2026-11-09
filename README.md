@@ -54,7 +54,11 @@ python -m venv .venv
 ## Docker
 
 Готовые `Dockerfile` и `docker-compose.yml`: в образе нет ни компилятора, ни pip, ни кэшей —
-только Python, Flask, psutil (для виджетов `sysinfo` и `disk`) и код (~60 МБ). В контейнере
+только Python, Flask, psutil (для виджетов `sysinfo` и `disk`) и код (~62 МБ). psutil не выпускает
+musllinux-колёс, поэтому на alpine он собирается из исходников: `gcc`, `musl-dev` и `linux-headers`
+ставятся на время `pip install` и удаляются в том же слое — первая сборка идёт дольше, чем
+пересборка кода. Если psutil всё же нет в образе, дашборд работает, а `sysinfo`/`disk` показывают
+ошибку «Not installed: psutil». В контейнере
 `sysinfo` показывает сам контейнер, а не хост: для цифр хоста нужен `--pid=host` и `/proc`
 внутри, для дисков — те пути, что смонтированы.
 

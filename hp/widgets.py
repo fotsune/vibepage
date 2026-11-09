@@ -38,7 +38,10 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
 
-import psutil
+try:
+    import psutil           # нативный модуль: нужен sysinfo/disk, без него дашборд живёт
+except ImportError:        # pragma: no cover — зависит от окружения, не от кода
+    psutil = None
 
 PING_OK_MS = 350          # быстрее — зелёный, медленнее — жёлтый
 PING_TTL = 5.0
@@ -623,16 +626,24 @@ class Watchtower(Spec):
 # сам хост: загрузка CPU, температура, память, аптайм
 # --------------------------------------------------------------------------- #
 
+def _psutil():
+    """Модуль psutil или внятная причина, почему sysinfo/disk не у дел."""
+    if psutil is None:
+        raise WidgetFailure("Not installed: psutil")
+    return psutil
+
+
 _CPU_SAMPLED = False      # первый cpu_percent(interval=None) всегда возвращает 0
 
 
 def _cpu_percent() -> int:
     """Загрузка CPU в процентах; первый замер за жизнь процесса — с паузой."""
     global _CPU_SAMPLED
+    module = _psutil()
     if _CPU_SAMPLED:
-        return int(round(psutil.cpu_percent(interval=None)))
+        return int(round(module.cpu_percent(interval=None)))
     _CPU_SAMPLED = True
-    return int(round(psutil.cpu_percent(interval=0.2)))
+    return int(round(module.cpu_percent(interval=0.2)))
 
 
 TEMP_SENSORS = ("coretemp", "k10temp", "zenpower", "cpu_thermal", "soc_thermal", "acpitz")
@@ -640,7 +651,7 @@ TEMP_SENSORS = ("coretemp", "k10temp", "zenpower", "cpu_thermal", "soc_thermal",
 
 def cpu_temperature() -> float | None:
     """Температура CPU в °C. None — датчика нет (так на Windows и в контейнере)."""
-    reader = getattr(psutil, "sensors_temperatures", None)
+    reader = getattr(_psutil(), "sensors_temperatures", None)
     if reader is None:
         return None
     try:
@@ -700,11 +711,12 @@ class SysInfo(Spec):
     OPTIONAL = ("tempmin", "tempmax", "units")
 
     def fetch(self, options: dict) -> dict:
+        module = _psutil()
         return {
             "cpu": _cpu_percent(),
             "cputemp": cpu_temperature(),
-            "memory": int(round(psutil.virtual_memory().percent)),
-            "uptime": int(time.time() - psutil.boot_time()),
+            "memory": int(round(module.virtual_memory().percent)),
+            "uptime": int(time.time() - module.boot_time()),
         }
 
     def tone(self, key, value, options=None) -> str:
@@ -784,10 +796,11 @@ class Disk(Spec):
         paths = disk_paths(options.get("disk"))
         if not paths:
             raise WidgetFailure("Not configured: missing disk")
+        module = _psutil()
         free = consumed = total = 0
         for path in paths:
             try:
-                usage = psutil.disk_usage(path)
+                usage = module.disk_usage(path)
             except (OSError, ValueError) as error:
                 raise WidgetFailure(f"Cannot read {path}") from error
             free += usage.free

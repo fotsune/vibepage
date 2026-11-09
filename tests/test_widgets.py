@@ -740,6 +740,18 @@ class MultiWidgetTestCase(unittest.TestCase):
         self.assertEqual(spec.show("total", 1_500_000, {}), "1.5 MB")
         self.assertEqual(spec.show("total", 1_500_000, {"diskunits": "bbytes"}), "1.4 MiB")
 
+    # ── psutil нет вовсе (образ без нативного модуля) ──────────────
+
+    def test_missing_psutil_is_a_widget_error_not_a_crash(self):
+        with mock.patch.object(widgets, "psutil", None):
+            sys_state = widgets.run_widget(self.site.widgets["sys"])
+            disk_state = widgets.run_widget(self.site.widgets["disk"])
+            body = self.client.get("/").get_data(as_text=True)
+        self.assertFalse(sys_state["ok"])
+        self.assertFalse(disk_state["ok"])
+        self.assertEqual(sys_state["error"], "Not installed: psutil.")
+        self.assertIn('data-key="Host::Box"', body)      # дашборд живёт дальше
+
     # ── fields ─────────────────────────────────────────────────────
 
     def test_fields_string_and_old_list_are_the_same(self):
