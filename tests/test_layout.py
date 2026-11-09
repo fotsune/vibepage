@@ -2,8 +2,8 @@
 
 import unittest
 
-from hp.config import Group, Service, Site, System, group_key
-from hp.layout import build_page, host_is_local
+from vp.config import Group, Service, Site, System, group_key
+from vp.layout import build_page, host_is_local
 
 
 def make_site(groups=(), services=(), cols=3, mobile_cols=1, open_in_new_page=False):

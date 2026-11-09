@@ -4,8 +4,8 @@ import os
 import tempfile
 import unittest
 
-from hp.config import Group, Service, Site, System, group_key, load
-from hp.layout import build_page
+from vp.config import Group, Service, Site, System, group_key, load
+from vp.layout import build_page
 
 
 def make_site(groups=(), group_cols=3):
@@ -38,26 +38,26 @@ class SystemKeyTests(unittest.TestCase):
 
     def test_defaults_match_the_code(self):
         # дефолты — те, что были захардкожены до появления ключей
-        path = self.write("homepage.toml", "[system]\ntitle = \"Home\"\n")
+        path = self.write("vibepage.toml", "[system]\ntitle = \"Home\"\n")
         site = load(path)
         self.assertEqual(site.system.poll, 10)
         self.assertEqual(site.system.group_cols, 3)
         self.assertEqual(site.warnings, [])
 
     def test_state_interval_is_poll(self):
-        path = self.write("homepage.toml", "[system]\nstate_interval = 25\n")
+        path = self.write("vibepage.toml", "[system]\nstate_interval = 25\n")
         site = load(path)
         self.assertEqual(site.system.poll, 25)
         self.assertEqual(site.warnings, [])
 
     def test_state_interval_keeps_the_floor_of_three_seconds(self):
-        path = self.write("homepage.toml", "[system]\nstate_interval = 1\n")
+        path = self.write("vibepage.toml", "[system]\nstate_interval = 1\n")
         site = load(path)
         self.assertEqual(site.system.poll, 3)
         self.assertTrue(any("state_interval" in warning for warning in site.warnings))
 
     def test_group_cols_and_group_override(self):
-        path = self.write("homepage.toml", """
+        path = self.write("vibepage.toml", """
             [system]
             group_cols = 4
 
@@ -77,11 +77,11 @@ class SystemKeyTests(unittest.TestCase):
         self.assertEqual(cols_of(page, "Plain"), 4)
 
     def test_group_cols_is_used_when_a_group_says_nothing(self):
-        path = self.write("homepage.toml", "[system]\ngroup_cols = 2\n\n[group:One]\npriority = 1\n")
+        path = self.write("vibepage.toml", "[system]\ngroup_cols = 2\n\n[group:One]\npriority = 1\n")
         self.assertEqual(cols_of(build_page(load(path)), "One"), 2)
 
     def test_zero_means_no_limit(self):
-        path = self.write("homepage.toml", "[system]\ngroup_cols = 0\n\n[group:One]\npriority = 1\n")
+        path = self.write("vibepage.toml", "[system]\ngroup_cols = 0\n\n[group:One]\npriority = 1\n")
         self.assertEqual(cols_of(build_page(load(path)), "One"), 0)
 
 

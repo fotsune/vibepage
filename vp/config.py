@@ -1,4 +1,4 @@
-"""TOML-like configuration parsing and loading for the homepage dashboard.
+"""TOML-like configuration parsing and loading for the vibepage dashboard.
 
 The format is deliberately *TOML-like* rather than strict TOML: section
 headers carry free-form names (``[service:My Server]``) and values may stay
@@ -50,7 +50,7 @@ URL_SCHEMES = ("http://", "https://", "//", "data:")
 
 @dataclass
 class System:
-    title: str = "Homepage"
+    title: str = "Vibepage"
     icon_path: str | None = None
     config_paths: list[str] = field(default_factory=list)
     cols: int = 3
@@ -548,7 +548,7 @@ def _make_service(section: dict, where: str, warnings: list[str]) -> Service:
     )
 
 
-def load(main_path: str = "config/homepage.toml") -> Site:
+def load(main_path: str = "config/vibepage.toml") -> Site:
     """Load the main config plus every file from its config_path directories."""
     main_path = os.path.abspath(os.path.expanduser(main_path))
     site = Site(config_dir=os.path.dirname(main_path))

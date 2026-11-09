@@ -6,8 +6,8 @@ import unittest
 
 import app as app_module
 
-from hp.config import Header, load
-from hp.layout import build_page
+from vp.config import Header, load
+from vp.layout import build_page
 
 LOGO = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
         '<rect width="24" height="24" fill="currentColor"/></svg>')
@@ -34,14 +34,14 @@ class HeaderCase(unittest.TestCase):
         if logo:
             with open(os.path.join(icons, "logo.svg"), "w", encoding="utf-8") as handle:
                 handle.write(LOGO)
-        path = os.path.join(tmp.name, "homepage.toml")
+        path = os.path.join(tmp.name, "vibepage.toml")
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(BASE + extra)
         return load(path), path
 
     def client(self, path):
-        os.environ["HOMEPAGE_CONFIG"] = path
-        self.addCleanup(os.environ.pop, "HOMEPAGE_CONFIG", None)
+        os.environ["VIBEPAGE_CONFIG"] = path
+        self.addCleanup(os.environ.pop, "VIBEPAGE_CONFIG", None)
         return app_module.app.test_client()
 
 

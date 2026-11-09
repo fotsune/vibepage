@@ -13,9 +13,9 @@ from urllib.error import URLError
 
 import app as app_module
 
-from hp import thermal, widgets
-from hp.config import Group, Service, Site, System, Widget, group_key, load
-from hp.layout import build_page
+from vp import thermal, widgets
+from vp.config import Group, Service, Site, System, Widget, group_key, load
+from vp.layout import build_page
 
 CONFIG = """
 [system]
@@ -73,7 +73,7 @@ class WidgetTestCase(unittest.TestCase):
         widgets.clear_cache()
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.path = os.path.join(self.tmp.name, "homepage.toml")
+        self.path = os.path.join(self.tmp.name, "vibepage.toml")
         with open(self.path, "w", encoding="utf-8") as handle:
             handle.write(CONFIG)
         self.saved = os.environ.get("TEST_PORTAINER_KEY")
@@ -290,8 +290,8 @@ class PortainerTests(WidgetTestCase):
 class PageAndRouteTests(WidgetTestCase):
     def setUp(self):
         super().setUp()
-        os.environ["HOMEPAGE_CONFIG"] = self.path
-        self.addCleanup(os.environ.pop, "HOMEPAGE_CONFIG", None)
+        os.environ["VIBEPAGE_CONFIG"] = self.path
+        self.addCleanup(os.environ.pop, "VIBEPAGE_CONFIG", None)
         self.client = app_module.app.test_client()
 
     def test_card_shows_field_skeleton_and_ping_dot(self):
@@ -757,8 +757,8 @@ class MultiWidgetTestCase(unittest.TestCase):
         with open(self.path, "w", encoding="utf-8") as handle:
             handle.write(MULTI_CONFIG)
         self.site = load(self.path)
-        os.environ["HOMEPAGE_CONFIG"] = self.path
-        self.addCleanup(os.environ.pop, "HOMEPAGE_CONFIG", None)
+        os.environ["VIBEPAGE_CONFIG"] = self.path
+        self.addCleanup(os.environ.pop, "VIBEPAGE_CONFIG", None)
         self.client = app_module.app.test_client()
 
     def psutil_patch(self, **values):

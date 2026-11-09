@@ -7,31 +7,31 @@
 # следующем же запросе страницы, перезапуск контейнера не нужен.
 
 services:
-  homepage:
+  vibepage:
     build:
       context: .
-    image: homepage:local
-    container_name: homepage
+    image: vibepage:local
+    container_name: vibepage
     restart: unless-stopped
 
     ports:
       # снаружи можно поменять port, внутри всегда 8080
-      - "${HOMEPAGE_BIND:-0.0.0.0}:${HOMEPAGE_PORT:-8080}:8080"
+      - "${VIBEPAGE_BIND:-0.0.0.0}:${VIBEPAGE_PORT:-8080}:8080"
 
     volumes:
       - ./config:/app/config          # конфиги и иконки — с хоста
       # если папка config на хосте лежит в другом месте:
-      # - /srv/homepage/config:/app/config:ro
+      # - /srv/vibepage/config:/app/config:ro
 
     environment:
-      HOMEPAGE_CONFIG: /app/config/homepage.toml
+      VIBEPAGE_CONFIG: /app/config/vibepage.toml
 
     # На Linux файлы в смонтированной папке принадлежат пользователю хоста.
     # Контейнер уже работает под uid 1000; если ваш uid другой, раскомментируйте:
     # user: "${UID:-1000}:${GID:-1000}"
 
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('HOMEPAGE_PORT', '8080'), timeout=3)\""]
+      test: ["CMD-SHELL", "python -c \"import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('VIBEPAGE_PORT', '8080'), timeout=3)\""]
       interval: 30s
       timeout: 5s
       start_period: 5s

@@ -1,4 +1,4 @@
-# Home — стартовая страница для своих сервисов
+# Vibepage — стартовая страница для своих сервисов
 
 Локальный дашборд в духе [Homepage](https://github.com/gethomepage/homepage), но на Python
 и в палитре [Dracula](https://draculatheme.com/contribute) (главный акцент — фиолетовый `#bd93f9`).
@@ -38,8 +38,8 @@ python -m venv .venv
 .venv/Scripts/python app.py                               # http://localhost:8080
 ```
 
-Полезные ключи: `--config путь/к/homepage.toml`, `--host 0.0.0.0`, `--port 8080`, `--debug`.
-Переменные окружения: `HOMEPAGE_CONFIG`, `HOMEPAGE_HOST`, `HOMEPAGE_PORT`.
+Полезные ключи: `--config путь/к/vibepage.toml`, `--host 0.0.0.0`, `--port 8080`, `--debug`.
+Переменные окружения: `VIBEPAGE_CONFIG`, `VIBEPAGE_HOST`, `VIBEPAGE_PORT`.
 
 При старте процесс печатает одну строку: каким интерпретатором, из какой папки с кодом и с
 каким конфигом он поднялся, — это первое, на что смотреть, если поведение не то.
@@ -76,12 +76,12 @@ docker compose down
 
 | переменная | по умолчанию | что делает |
 |---|---|---|
-| `HOMEPAGE_PORT` | `8080` | порт на хосте (внутри контейнера всегда 8080) |
-| `HOMEPAGE_BIND` | `0.0.0.0` | адрес, на котором слушать снаружи |
-| `HOMEPAGE_CONFIG` | `/app/config/homepage.toml` | главный конфиг внутри контейнера |
+| `VIBEPAGE_PORT` | `8080` | порт на хосте (внутри контейнера всегда 8080) |
+| `VIBEPAGE_BIND` | `0.0.0.0` | адрес, на котором слушать снаружи |
+| `VIBEPAGE_CONFIG` | `/app/config/vibepage.toml` | главный конфиг внутри контейнера |
 
 ```sh
-HOMEPAGE_PORT=9000 HOMEPAGE_BIND=127.0.0.1 docker compose up -d
+VIBEPAGE_PORT=9000 VIBEPAGE_BIND=127.0.0.1 docker compose up -d
 ```
 
 Контейнер работает под uid 1000 (пользователь `app`), чтобы `.icon-cache` в смонтированной
@@ -91,24 +91,24 @@ Healthcheck ходит в `/healthz` стандартным питоном, по
 Без compose:
 
 ```sh
-docker build -t homepage .
-docker run -d --name homepage -p 8080:8080 -v "$PWD/config:/app/config" homepage
+docker build -t vibepage .
+docker run -d --name vibepage -p 8080:8080 -v "$PWD/config:/app/config" vibepage
 ```
 
-Если конфиг лежит в другом месте — монтируйте его как есть: `-v /srv/homepage/config:/app/config:ro`.
+Если конфиг лежит в другом месте — монтируйте его как есть: `-v /srv/vibepage/config:/app/config:ro`.
 На чтение тоже работает (страница не сломается), просто кэш иконок не сохранится между запусками.
 
 ---
 
 ## Конфиг
 
-Главный файл — `config/homepage.toml`. Из него же читается `system.config_path`: все `*.toml`
+Главный файл — `config/vibepage.toml`. Из него же читается `system.config_path`: все `*.toml`
 из этой папки подтягиваются автоматически, раскладывать по файлам можно как угодно — в одном
 только группы, в другом только сервисы, третий вообще один `[system]`.
 
-Полный образец — `config/homepage.toml.example`: все секции, все ключи с дефолтами, все
+Полный образец — `config/vibepage.toml.example`: все секции, все ключи с дефолтами, все
 одиннадцать типов виджетов и обе формы «виджета с другого хоста». Это не мёртвая справка:
-файл валиден как есть, копируется в `config/homepage.toml` и работает; тест
+файл валиден как есть, копируется в `config/vibepage.toml` и работает; тест
 `ExampleConfigTests` держит его таким (загружается без единой ошибки и предупреждения).
 
 ```toml
@@ -481,7 +481,7 @@ fields = "free, consumed, total"
 ```
 
 `cpu`, `ram` и `disk` смотрят на тот же хост, где живёт dashboard (в контейнере — на
-контейнер), описаны в `hp/widgets.py`, `hp/thermal.py`. Старое имя `type = sysinfo`
+контейнер), описаны в `vp/widgets.py`, `vp/thermal.py`. Старое имя `type = sysinfo`
 продолжает работать и означает `cpu` (поле `memory` ушло в `ram`). Несколько путей
 в `disk` складываются в одно число, `name` даёт виджету подпись — она нужна, когда на
 одной карточке два диска и надо их различить. Без `name` подпись у диска всё равно есть:
@@ -605,20 +605,20 @@ GET / ──► чтение всех конфигов ──► сборка la
   только отрендеренную страницу и числа на `/api/state` — их сервер сам добывает из виджетов.
 * JS (`static/js/app.js`) работает уже по готовому DOM: поиск, часы, подмена битых картинок
   и поллинг `/api/state` для пингов и виджетов.
-* Порядок «столбцы → группы → сервисы» считается в `hp/layout.py` на чистом Python,
+* Порядок «столбцы → группы → сервисы» считается в `vp/layout.py` на чистом Python,
   поэтому его легко проверить тестами без браузера.
 
 ```
 app.py              Flask: маршруты /, /api/state, /icon/<name>, /healthz
-hp/config.py        парсер TOML-like и сборка модели (Site, Group, Service, System)
-hp/layout.py        столбцы, приоритеты, объединение групп, выбор link/alt
-hp/widgets.py       источники живого состояния: portainer, cpu, ram, disk, пинг и кэш ответов
-hp/thermal.py       температура CPU: hwmon и sysfs на linux, WMI и LHM на Windows
-hp/icons.py         иконки: файлы, mdi/sdi через Iconify, /icon/…, плейсхолдер
-hp/colors.py        палитра Dracula, разбор имён/hex и автоподбор акцента группы
+vp/config.py        парсер TOML-like и сборка модели (Site, Group, Service, System)
+vp/layout.py        столбцы, приоритеты, объединение групп, выбор link/alt
+vp/widgets.py       источники живого состояния: portainer, cpu, ram, disk, пинг и кэш ответов
+vp/thermal.py       температура CPU: hwmon и sysfs на linux, WMI и LHM на Windows
+vp/icons.py         иконки: файлы, mdi/sdi через Iconify, /icon/…, плейсхолдер
+vp/colors.py        палитра Dracula, разбор имён/hex и автоподбор акцента группы
 templates/          index.html, error.html
 static/             style.css (Dracula), app.js, favicon.svg
-config/             homepage.toml + conf.d/* + icons/
+config/             vibepage.toml + conf.d/* + icons/
 tests/              unittest: парсер, раскладка, HTTP-поведение
 Dockerfile          образ: alpine + venv без pip, пользователь app (uid 1000)
 docker-compose.yml  запуск с маунтом ./config:/app/config

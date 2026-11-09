@@ -34,7 +34,7 @@ SET_ALIASES = {"sdi": "simple-icons", "si": "simple-icons", "mdI": "mdi", "mdi":
 SCHEME_RE = re.compile(r"^(?P<set>[A-Za-z0-9][A-Za-z0-9-]*):(?P<name>[A-Za-z0-9][A-Za-z0-9_.-]*)$")
 ALIAS_RE = re.compile(r"^(?P<set>mdi|sdi)[-/:](?P<name>[A-Za-z0-9][A-Za-z0-9_.-]*)$", re.I)
 ICONIFY = "https://api.iconify.design/{set}/{name}.svg"
-USER_AGENT = "homepage-dashboard/1.0 (+iconify)"
+USER_AGENT = "vibepage-dashboard/1.0 (+iconify)"
 
 _memo: dict[str, tuple[float, str | None]] = {}
 

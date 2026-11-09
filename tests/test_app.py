@@ -16,7 +16,7 @@ class AppTests(unittest.TestCase):
         with open(os.path.join(self.root, "icons", "chip.svg"), "w", encoding="utf-8") as handle:
             handle.write('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/></svg>')
         self.config = self.write(
-            "homepage.toml",
+            "vibepage.toml",
             """
             [system]
             title = "Test Home"
@@ -37,8 +37,8 @@ class AppTests(unittest.TestCase):
             group = "Group A"
             """,
         )
-        os.environ["HOMEPAGE_CONFIG"] = self.config
-        self.addCleanup(os.environ.pop, "HOMEPAGE_CONFIG", None)
+        os.environ["VIBEPAGE_CONFIG"] = self.config
+        self.addCleanup(os.environ.pop, "VIBEPAGE_CONFIG", None)
         self.client = app_module.app.test_client()
 
     def write(self, name, text):
@@ -71,7 +71,7 @@ class AppTests(unittest.TestCase):
 
     def test_icon_route_serves_and_guards(self):
         for path, expected in (("/icon/chip.svg", 200), ("/icon/missing.svg", 404),
-                               ("/icon/../homepage.toml", 404)):
+                               ("/icon/../vibepage.toml", 404)):
             response = self.client.get(path)
             self.assertEqual(response.status_code, expected, path)
             response.close()

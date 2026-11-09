@@ -7,8 +7,8 @@ import unittest
 
 import app as app_module
 
-from hp.config import load
-from hp.layout import build_page
+from vp.config import load
+from vp.layout import build_page
 
 CONFIG = """
 [system]
@@ -45,8 +45,8 @@ PRIORITY_ORDER = ["Group1", "Group2", "Group3", "Group4", "Group5", "Default"]
 
 def load_config():
     """mkdtemp, не TemporaryDirectory: каталог должен жить до конца теста."""
-    directory = tempfile.mkdtemp(prefix="hp-flow-")
-    path = os.path.join(directory, "homepage.toml")
+    directory = tempfile.mkdtemp(prefix="vp-flow-")
+    path = os.path.join(directory, "vibepage.toml")
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(CONFIG)
     return load(path), directory
@@ -93,8 +93,8 @@ class FlowHtmlTests(unittest.TestCase):
     def test_template_carries_flow_and_both_hints(self):
         site, directory = load_config()
         self.addCleanup(shutil.rmtree, directory, True)
-        os.environ["HOMEPAGE_CONFIG"] = os.path.join(directory, "homepage.toml")
-        self.addCleanup(os.environ.pop, "HOMEPAGE_CONFIG", None)
+        os.environ["VIBEPAGE_CONFIG"] = os.path.join(directory, "vibepage.toml")
+        self.addCleanup(os.environ.pop, "VIBEPAGE_CONFIG", None)
         body = app_module.app.test_client().get("/").get_data(as_text=True)
         self.assertIn("--flow: 0", body)
         self.assertIn("--flow: 5", body)

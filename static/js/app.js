@@ -217,7 +217,7 @@
       ["ok", "slow", "down", "unknown"].forEach(function (name) {
         node.classList.toggle("state-" + name, name === state);
       });
-      // те же слова и тот же способ проверки, что в ping_title() из hp/widgets.py
+      // те же слова и тот же способ проверки, что в ping_title() из vp/widgets.py
       var words = { ok: "Up", slow: "Slow", down: "Down" };
       var via = { icmp: "ICMP", tcp: "TCP" }[ping.via] || "";
       node.dataset.tip = "Ping: " + (words[state] || "Unknown") +

@@ -33,9 +33,9 @@ FROM python:3.12-alpine AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
-    HOMEPAGE_CONFIG=/app/config/homepage.toml \
-    HOMEPAGE_HOST=0.0.0.0 \
-    HOMEPAGE_PORT=8080
+    VIBEPAGE_CONFIG=/app/config/vibepage.toml \
+    VIBEPAGE_HOST=0.0.0.0 \
+    VIBEPAGE_PORT=8080
 
 WORKDIR /app
 
@@ -44,7 +44,7 @@ RUN adduser -D -H -u 1000 -s /sbin/nologin app
 
 COPY --from=deps /opt/venv /opt/venv
 COPY --chown=app:app app.py ./
-COPY --chown=app:app hp ./hp
+COPY --chown=app:app vp ./vp
 COPY --chown=app:app templates ./templates
 COPY --chown=app:app static ./static
 COPY --chown=app:app config ./config
@@ -53,6 +53,6 @@ USER app
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('HOMEPAGE_PORT', '8080'), timeout=3)"
+    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('VIBEPAGE_PORT', '8080'), timeout=3)"
 
 CMD ["python", "app.py"]

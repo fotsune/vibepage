@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from types import SimpleNamespace
 
-from hp import icons
+from vp import icons
 
 SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M1 1h2"/></svg>'
 

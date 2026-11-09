@@ -6,7 +6,7 @@ import shutil
 import tempfile
 import unittest
 
-from hp.config import DEFAULT_GROUP, load, parse_file, parse_value
+from vp.config import DEFAULT_GROUP, load, parse_file, parse_value
 
 
 class ParseValueTests(unittest.TestCase):
@@ -90,7 +90,7 @@ class LoadTests(unittest.TestCase):
 
     def test_extra_files_and_system_precedence(self):
         self.write(
-            "homepage.toml",
+            "vibepage.toml",
             """
             [system]
             title = "Home"
@@ -126,7 +126,7 @@ class LoadTests(unittest.TestCase):
             link = "http://10.0.0.5:8080"
             """,
         )
-        site = load(os.path.join(self.root, "homepage.toml"))
+        site = load(os.path.join(self.root, "vibepage.toml"))
         self.assertEqual(site.errors, [])
         # главный конфиг выигрывает у доп. файла
         self.assertEqual(site.system.cols, 3)
@@ -147,7 +147,7 @@ class LoadTests(unittest.TestCase):
 
     def test_name_defaults_and_validation(self):
         self.write(
-            "homepage.toml",
+            "vibepage.toml",
             """
             [system]
             cols = 0
@@ -159,7 +159,7 @@ class LoadTests(unittest.TestCase):
             whatever = 1
             """,
         )
-        site = load(os.path.join(self.root, "homepage.toml"))
+        site = load(os.path.join(self.root, "vibepage.toml"))
         self.assertEqual(site.services[0].name, "Cam")   # имя берётся из секции
         self.assertIsNone(site.services[0].priority)     # мусор в priority — предупреждение, не падение
         self.assertEqual(site.system.cols, 1)            # 0 поднимается до минимума
@@ -169,28 +169,28 @@ class LoadTests(unittest.TestCase):
 
     def test_missing_config_dir_is_reported(self):
         self.write(
-            "homepage.toml",
+            "vibepage.toml",
             """
             [system]
             config_path = "nowhere"
             """,
         )
-        site = load(os.path.join(self.root, "homepage.toml"))
+        site = load(os.path.join(self.root, "vibepage.toml"))
         self.assertTrue(any("nowhere" in error for error in site.errors))
 
 
 class ExampleConfigTests(unittest.TestCase):
-    """config/homepage.toml.example — образец, который обязан оставаться рабочим."""
+    """config/vibepage.toml.example — образец, который обязан оставаться рабочим."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.example = os.path.join(root, "config", "homepage.toml.example")
+        self.example = os.path.join(root, "config", "vibepage.toml.example")
         os.mkdir(os.path.join(self.tmp.name, "conf.d"))
         shutil.copytree(os.path.join(root, "config", "icons"),
                         os.path.join(self.tmp.name, "icons"))
-        self.path = os.path.join(self.tmp.name, "homepage.toml")
+        self.path = os.path.join(self.tmp.name, "vibepage.toml")
         shutil.copy(self.example, self.path)
 
     def test_example_loads_without_a_single_complaint(self):
@@ -207,7 +207,7 @@ class ExampleConfigTests(unittest.TestCase):
             return handle.read()
 
     def test_example_names_every_widget_type(self):
-        from hp import widgets
+        from vp import widgets
         site = load(self.path)
         declared = {widgets.canonical_type(widget.type) for widget in site.widgets.values()}
         self.assertEqual(declared, set(widgets.REGISTRY))
@@ -222,8 +222,8 @@ class ExampleConfigTests(unittest.TestCase):
                 self.assertRegex(block, r"(?m)^\s*#?\s*%s\s*=" % key, f"{head}: нет ключа {key}")
 
     def test_every_config_key_is_documented(self):
-        from hp.config import GROUP_KEYS, HEADER_KEYS, SERVICE_KEYS, SYSTEM_KEYS
-        from hp import widgets
+        from vp.config import GROUP_KEYS, HEADER_KEYS, SERVICE_KEYS, SYSTEM_KEYS
+        from vp import widgets
         text = self.text()
         aliases = {"poll", "enabled", "header", "main_alt", "tagline", "subtitle"}
         for keys in (SYSTEM_KEYS, HEADER_KEYS, GROUP_KEYS, SERVICE_KEYS):

@@ -2,7 +2,7 @@
 
 import unittest
 
-from hp.colors import ACCENTS, auto, parse
+from vp.colors import ACCENTS, auto, parse
 
 
 class ParseTests(unittest.TestCase):

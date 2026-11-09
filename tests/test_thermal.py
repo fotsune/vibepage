@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from hp import thermal
+from vp import thermal
 
 
 def _temp(value):

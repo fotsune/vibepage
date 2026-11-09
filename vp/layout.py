@@ -22,7 +22,7 @@ from .colors import auto as auto_color
 from .config import Group, Service, Site, group_key
 
 
-LOCALISH_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0", "home", "homepage"}
+LOCALISH_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0", "home", "vibepage"}
 
 
 def sort_key(item) -> tuple:

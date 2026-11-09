@@ -6,9 +6,9 @@ import unittest
 
 import app as app_module
 
-from hp.colors import ACCENTS, auto
-from hp.config import Group, Service, Site, System, group_key, load
-from hp.layout import build_page
+from vp.colors import ACCENTS, auto
+from vp.config import Group, Service, Site, System, group_key, load
+from vp.layout import build_page
 
 CONFIG = """
 [system]
@@ -38,7 +38,7 @@ group = "Infra"
 
 def load_config(text=CONFIG):
     tmp = tempfile.TemporaryDirectory()
-    path = os.path.join(tmp.name, "homepage.toml")
+    path = os.path.join(tmp.name, "vibepage.toml")
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(text)
     site = load(path)
@@ -74,7 +74,7 @@ class ConfigColorTests(unittest.TestCase):
         path = os.path.join(tmp.name, "extra.toml")
         with open(path, "w", encoding="utf-8") as handle:
             handle.write('[group:Broken]\ncolor = "не-цвет"\n')
-        site = load(os.path.join(tmp.name, "homepage.toml"))
+        site = load(os.path.join(tmp.name, "vibepage.toml"))
         self.assertIsNone(site.groups[group_key("Broken")].color)
         self.assertTrue(any("не понимаю цвет" in warning for warning in site.warnings))
 
@@ -120,8 +120,8 @@ class PageHtmlTests(unittest.TestCase):
     def setUp(self):
         self.site, self.tmp = load_config()
         self.addCleanup(self.tmp.cleanup)
-        os.environ["HOMEPAGE_CONFIG"] = os.path.join(self.tmp.name, "homepage.toml")
-        self.addCleanup(os.environ.pop, "HOMEPAGE_CONFIG", None)
+        os.environ["VIBEPAGE_CONFIG"] = os.path.join(self.tmp.name, "vibepage.toml")
+        self.addCleanup(os.environ.pop, "VIBEPAGE_CONFIG", None)
         self.client = app_module.app.test_client()
 
     def test_switch_and_data_attributes_are_rendered(self):

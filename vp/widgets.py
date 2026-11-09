@@ -265,7 +265,7 @@ class Portainer(Spec):
         raw = _request(url, {
             "X-API-Key": str(options.get("key", "")),
             "Accept": "application/json",
-            "User-Agent": "homepage-dashboard",
+            "User-Agent": "vibepage-dashboard",
         }, timeout=float(options.get("timeout", DEFAULT_TIMEOUT)),
             insecure=not _truthy(options.get("verify_tls", False)))
         payload = _json(raw)
@@ -844,7 +844,7 @@ class Navidrome(Spec):
         query = urlencode({"u": str(options.get("user", "")),
                            "t": str(options.get("token", "")),
                            "s": str(options.get("salt", "")),
-                           "v": SUBSONIC_VERSION, "c": "homepage", "f": "json"})
+                           "v": SUBSONIC_VERSION, "c": "vibepage", "f": "json"})
         raw = _request(f"{base}/rest/{endpoint}?{query}", {"Accept": "application/json"},
                        timeout=timeout, insecure=insecure)
         payload = _json(raw, "if Navidrome runs under a sub-path, put it in url")

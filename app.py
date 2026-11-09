@@ -1,4 +1,4 @@
-"""homepage — a Dracula-purple start page for self-hosted services.
+"""vibepage — a Dracula-purple start page for self-hosted services.
 
 Every request re-reads the config files and re-renders the whole page, so the
 browser never talks to the config: it only ever receives finished HTML. There
@@ -16,13 +16,13 @@ import traceback
 
 from flask import Flask, abort, make_response, render_template, request, send_file
 
-from hp import icons as icon_lib
-from hp import widgets as widget_lib
-from hp.config import load
-from hp.layout import build_page, host_is_local
+from vp import icons as icon_lib
+from vp import widgets as widget_lib
+from vp.config import load
+from vp.layout import build_page, host_is_local
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_CONFIG = os.path.join(HERE, "config", "homepage.toml")
+DEFAULT_CONFIG = os.path.join(HERE, "config", "vibepage.toml")
 ENV_FILE = os.path.join(HERE, "config", ".env")
 
 
@@ -53,7 +53,7 @@ app.config["TEMPLATES_AUTO_RELOAD"] = True
 
 
 def config_path() -> str:
-    return os.environ.get("HOMEPAGE_CONFIG") or DEFAULT_CONFIG
+    return os.environ.get("VIBEPAGE_CONFIG") or DEFAULT_CONFIG
 
 
 def _icon_resolver(site):
@@ -76,7 +76,7 @@ def index():
             message=str(exc),
             detail=traceback.format_exc(limit=3),
             path=path,
-            page={"title": "Homepage"},
+            page={"title": "Vibepage"},
         )
     response = make_response(html)
     response.headers["Cache-Control"] = "no-store, max-age=0"
@@ -131,20 +131,20 @@ def healthz():
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Start the homepage dashboard")
+    parser = argparse.ArgumentParser(description="Start the vibepage dashboard")
     parser.add_argument("--config", default=None, help="путь к главному конфигу")
-    parser.add_argument("--host", default=os.environ.get("HOMEPAGE_HOST", "0.0.0.0"))
-    parser.add_argument("--port", type=int, default=int(os.environ.get("HOMEPAGE_PORT", "8080")))
+    parser.add_argument("--host", default=os.environ.get("VIBEPAGE_HOST", "0.0.0.0"))
+    parser.add_argument("--port", type=int, default=int(os.environ.get("VIBEPAGE_PORT", "8080")))
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
     if args.config:
-        os.environ["HOMEPAGE_CONFIG"] = os.path.abspath(args.config)
+        os.environ["VIBEPAGE_CONFIG"] = os.path.abspath(args.config)
     print(
-        "homepage: %s · код %s · конфиг %s · secrets %s"
+        "vibepage: %s · код %s · конфиг %s · secrets %s"
         % (
             sys.executable,
             HERE,
-            os.environ.get("HOMEPAGE_CONFIG") or DEFAULT_CONFIG,
+            os.environ.get("VIBEPAGE_CONFIG") or DEFAULT_CONFIG,
             "есть" if os.path.exists(ENV_FILE) else "нет",
         ),
         flush=True,
