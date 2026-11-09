@@ -645,6 +645,8 @@ docker-compose.yml  запуск с маунтом ./config:/app/config
 
 ## Заметки
 
+* Проект раньше звался Homepage: главный конфиг — `config/homepage.toml` → `config/vibepage.toml`,
+  переменные окружения `HOMEPAGE_*` → `VIBEPAGE_*`, пакет `hp/` → `vp/`.
 * Для доступа из локальной сети сервер по умолчанию слушает `0.0.0.0`; для «только этот компьютер»
   запускайте с `--host 127.0.0.1`.
 * `app.run` — это dev-сервер. Для постоянной работы: `pip install waitress` и
