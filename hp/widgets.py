@@ -187,14 +187,16 @@ def ping(target: str, timeout: float = 2.0) -> dict:
     return {"state": "ok" if ms <= PING_OK_MS else "slow", "ms": ms, "target": f"{host}:{port}"}
 
 
-PING_WORDS = {"ok": "отвечает", "slow": "медленно", "down": "не отвечает"}
+PING_WORDS = {"ok": "Up", "slow": "Slow", "down": "Down"}
 
 
 def ping_title(state) -> str:
-    """Подсказка к точке пинга без адреса: клиенту незачем знать, куда мы стучимся."""
-    word = PING_WORDS.get((state or {}).get("state") or "unknown", "нет данных")
+    """Подсказка к точке пинга без адреса: клиенту незачем знать, куда мы стучимся.
+
+    По-английски и без хоста: «Ping: Up · 1 ms». Те же слова в static/js/app.js."""
+    word = PING_WORDS.get((state or {}).get("state") or "unknown", "Unknown")
     ms = (state or {}).get("ms")
-    return "пинг: " + word + (f" · {ms} мс" if ms is not None else "")
+    return "Ping: " + word + (f" · {ms} ms" if ms is not None else "")
 
 
 def wire_ping(state: dict) -> dict:

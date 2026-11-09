@@ -145,9 +145,9 @@
       ["ok", "slow", "down", "unknown"].forEach(function (name) {
         node.classList.toggle("state-" + name, name === state);
       });
-      var words = { ok: "отвечает", slow: "медленно", down: "не отвечает" };
-      node.title = "пинг: " + (words[state] || "нет данных") +
-        (ping.ms === null || ping.ms === undefined ? "" : " · " + ping.ms + " мс");
+      var words = { ok: "Up", slow: "Slow", down: "Down" };   // те же слова, что в hp/widgets.py
+      node.title = "Ping: " + (words[state] || "Unknown") +
+        (ping.ms === null || ping.ms === undefined ? "" : " · " + ping.ms + " ms");
     }
 
     function paintWidget(card, widget) {

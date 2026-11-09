@@ -241,14 +241,14 @@ class PageAndRouteTests(WidgetTestCase):
             body = self.client.get("/").get_data(as_text=True)
         # адрес может быть виден в ссылке карточки — но не в точке пинга
         dot = body[body.index('class="card-ping'):][:200]
-        self.assertIn('title="пинг: нет данных"', dot)     # до первого ответа — честное «нет данных»
+        self.assertIn('title="Ping: Unknown"', dot)       # до первого ответа — честное «нет данных»
         self.assertNotIn("192.0.2.10", dot)
 
     def test_ping_tooltip_words(self):
-        self.assertEqual(widgets.ping_title({"state": "ok", "ms": 12}), "пинг: отвечает · 12 мс")
-        self.assertEqual(widgets.ping_title({"state": "slow", "ms": 900}), "пинг: медленно · 900 мс")
-        self.assertEqual(widgets.ping_title({"state": "down", "ms": None}), "пинг: не отвечает")
-        self.assertEqual(widgets.ping_title(None), "пинг: нет данных")
+        self.assertEqual(widgets.ping_title({"state": "ok", "ms": 1}), "Ping: Up · 1 ms")
+        self.assertEqual(widgets.ping_title({"state": "slow", "ms": 900}), "Ping: Slow · 900 ms")
+        self.assertEqual(widgets.ping_title({"state": "down", "ms": None}), "Ping: Down")
+        self.assertEqual(widgets.ping_title(None), "Ping: Unknown")
         self.assertEqual(widgets.wire_ping({"state": "ok", "ms": 4, "target": "h:1", "error": "x"}),
                          {"state": "ok", "ms": 4})
 
