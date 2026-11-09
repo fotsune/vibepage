@@ -1,6 +1,7 @@
 """Тесты разбора TOML-like конфига и сборки модели."""
 
 import os
+import re
 import shutil
 import tempfile
 import unittest
@@ -201,23 +202,47 @@ class ExampleConfigTests(unittest.TestCase):
         self.assertEqual(site.system.group_cols, 3)
         self.assertEqual(site.system.cols, 3)
 
+    def text(self):
+        with open(self.example, encoding="utf-8") as handle:
+            return handle.read()
+
     def test_example_names_every_widget_type(self):
         from hp import widgets
         site = load(self.path)
         declared = {widgets.canonical_type(widget.type) for widget in site.widgets.values()}
         self.assertEqual(declared, set(widgets.REGISTRY))
 
-    def test_example_keeps_the_visible_page_quiet(self):
-        # ни один адрес образца не обязан быть живым: пинг и виджеты чужих
-        # серверов в образце закомментированы, так что копия не мигает
-        # красными точками, а сразу показывает карточки
+    def test_every_widget_can_be_taken_from_a_neighbour(self):
+        # external работает у каждого типа, значит и расписан в каждом блоке
+        blocks = re.split(r"(?m)^\[widget:", self.text())[1:]
+        self.assertEqual(len(blocks), 11)
+        for block in blocks:
+            head = block.split("\n", 1)[0].strip(" ]")
+            for key in ("type", "host", "external", "fields"):
+                self.assertRegex(block, r"(?m)^\s*#?\s*%s\s*=" % key, f"{head}: нет ключа {key}")
+
+    def test_every_config_key_is_documented(self):
+        from hp.config import GROUP_KEYS, HEADER_KEYS, SERVICE_KEYS, SYSTEM_KEYS
+        from hp import widgets
+        text = self.text()
+        aliases = {"poll", "enabled", "header", "main_alt", "tagline", "subtitle"}
+        for keys in (SYSTEM_KEYS, HEADER_KEYS, GROUP_KEYS, SERVICE_KEYS):
+            for key in keys:
+                if key in aliases:
+                    self.assertIn(key, text)        # алиас хотя бы назван по имени
+                else:
+                    self.assertRegex(text, r"(?m)^\s*#?\s*%s\s*=" % key, key)
+        for spec in widgets.REGISTRY.values():      # и ключи самих виджетов
+            for key in spec.REQUIRED + spec.OPTIONAL:
+                self.assertRegex(text, r"(?m)^\s*#?\s*%s\s*=" % key, key)
+
+    def test_example_copies_into_a_quiet_page(self):
         site = load(self.path)
-        by_name = {service.name: service for service in site.services}
-        self.assertEqual(by_name["Grafana"].alt, "http://192.168.1.10:3000")
-        self.assertIsNone(by_name["Grafana"].ping)
-        self.assertTrue(by_name["Grafana"].new_page)
-        self.assertEqual(by_name["Jellyfin"].group, "Default")
-        self.assertEqual(by_name["Этот хост"].widgets, ["cpu", "ram", "disk"])
+        card = site.services[0]
+        self.assertEqual(card.widgets, ["cpu"])
+        self.assertEqual(card.alt, "http://192.168.1.10:3000")
+        self.assertTrue(card.new_page)
+        self.assertEqual(card.group, "Main")
 
 
 if __name__ == "__main__":

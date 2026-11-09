@@ -1,277 +1,198 @@
-# ═════════════════════════════════════════════════════════════════════
-#  Home — полный образец конфига: все секции, все ключи, все дефолты
+# ═══════════════════════════════════════════════════════════════════
+#  Home — образец конфига: каждая секция по разу, все ключи, дефолты
 #
-#  Это одновременно справочник и рабочий файл: скопируйте его в
-#  config/homepage.toml (или в любой *.toml из config_path), замените
-#  адреса на свои — страница перечитывает конфиг на каждый запрос,
-#  так что достаточно F5, перезапуск не нужен.
+#  Скопировать в config/homepage.toml (или в любой *.toml из config_path).
+#  Формат TOML-like: значение можно без кавычек (кавычки нужны при
+#  пробелах, запятой и «#»); списки — "a, b" или ["a", "b"]; ${VAR} и
+#  ${VAR:-запасное} берутся из config/.env или из окружения процесса;
+#  «#» после пробела — комментарий, color = #8be9fd остаётся цветом.
 #
-#  ── формат ─────────────────────────────────────────────────────────
-#  «TOML-like», а не строгий TOML:
-#
-#    [system]  [header]                     по одной секции на все файлы:
-#                                            вторая дополняет первую
-#    [group:Имя] [service:Имя] [widget:Имя] имя свободное: пробелы, дефисы,
-#                                            кириллица — всё можно
-#
-#    значение можно не брать в кавычки: title = Home — это строка «Home»;
-#    кавычки нужны, если внутри пробелы, запятая или «#»; в "…" работают
-#    \" \\ \n \t;  комментарий — «#» после пробела до конца строки,
-#    а color = #8be9fd остаётся цветом (числа и true/false — тоже без кавычек)
-#    список пишется и строкой  widget = "cpu, ram"
-#    и массивом                widget = ["cpu", "ram"]        — смысл один
-#    ${VAR} и ${VAR:-запасное} — подстановка окружения: сначала config/.env,
-#    затем окружение процесса; уже заданное окружение главнее файла
-#
-#  ── файлы ──────────────────────────────────────────────────────────
-#  Главный файл — config/homepage.toml. Из него читается system.config_path:
-#  все *.toml из этих папок подтягиваются по алфавиту, главный — последним,
-#  поэтому его [system] побеждает, а чужие [group]/[service]/[widget] просто
-#  добавляются к общему списку. Разложить можно как угодно: в одном файле
-#  группы, в другом сервисы, в третьем только [system].
-#
-#  Ошибка в одной секции не роняет страницу: сверху появляется плашка с
-#  файлом и номером строки, всё корректное продолжает работать.
-# ═════════════════════════════════════════════════════════════════════
+#  В конце строки: ОБЯЗ — ключ нужен; «необяз · X» — что будет без него.
+#  Главный конфиг читается последним, поэтому его [system] побеждает
+#  [system] из файлов config_path.
+# ═══════════════════════════════════════════════════════════════════
 
 
-# ─────────────────────────────────────────────────────────────────────
-#  [system] — общие настройки. Дефолт указан в комментарии.
-#  Здесь же можно писать любые ключи [header] — они всё равно про шапку.
-# ─────────────────────────────────────────────────────────────────────
+# общие настройки
 [system]
-title = "Home"                 # заголовок в шапке и в <title>; дефолт "Homepage"
-icon_path = "icons"            # папка с иконками; относительный путь — от этого файла;
-                               # дефолт — каталог icons рядом с конфигом
-config_path = "conf.d"        # папка с доп. конфигами: одна, список ("a, b") или маска
-                               # ("../shared/*.toml"); дефолт — доп. файлов нет
-cols = 3                       # столбцов с группами на десктопе, минимум 1
-mobile_cols = 1                # столбцов на узком экране (≤ 900px), минимум 1
-open_in_new_page = false      # значение new_page для всех сервисов, где он не задан
-state_interval = 10            # как часто страница спрашивает /api/state, секунд,
-                               # минимум 3; старое имя ключа — poll = 10
-group_cols = 3                 # максимум столбцов карточек внутри группы;
-                               # 0 — столько, сколько поместится
+title = "Home"                  # необяз · "Homepage"
+icon_path = "icons"             # необяз · каталог icons рядом с конфигом
+config_path = "conf.d"          # необяз · без доп. файлов; папка, список или маска
+cols = 3                        # необяз · 3, минимум 1 — столбцов с группами на десктопе
+mobile_cols = 1                 # необяз · 1 — столбцов на узком экране (≤ 900px)
+open_in_new_page = false        # необяз · false — значение new_page для всех сервисов
+state_interval = 10             # необяз · 10, минимум 3 — как часто страница спрашивает
+                                # /api/state, секунд (старое имя ключа — poll)
+group_cols = 3                  # необяз · 3 — столбцов карточек в группе, 0 — сколько влезет
 
 
-# ─────────────────────────────────────────────────────────────────────
-#  [header] — верхняя панель. Каждый переключатель по умолчанию включён.
-# ─────────────────────────────────────────────────────────────────────
+# верхняя панель; любой ключ можно писать и в [system]
 [header]
-show = true                    # вся шапка целиком (алиасы: header, enabled)
-desc = "self-hosted dashboard" # подпись под заголовком (алиасы: tagline, subtitle);
-                               # desc = "" убирает её совсем
-time = true                    # часы
-time_format = 12               # 12 — AM/PM, 24 — 24-часовой; иное значение → 12
-search = true                  # строка поиска с горячей клавишей «/»
-icon = "home.svg"              # логотип: файл из icon_path (svg вставляется инлайном),
-                               # "mdi:home" / "sdi:home" или URL
-favicon = "favicon.svg"        # иконка вкладки, тоже относительно icon_path
-link_mode = "auto"             # какую ссылку открывать по клику (алиас: main_alt):
-                               # auto — по адресу подключения: локально alt, снаружи link
-                               # main — всегда link, alt — всегда alt
+show = true                     # необяз · true — вся шапка (алиасы: header, enabled)
+desc = "self-hosted dashboard"  # необяз · "self-hosted dashboard"; "" скрывает подпись
+                                # (алиасы: tagline, subtitle)
+time = true                     # необяз · true — часы
+time_format = 12                # необяз · 12; 24 — сутки
+search = true                   # необяз · true — строка поиска и горячая клавиша «/»
+icon = "home.svg"               # необяз · нет — файл из icon_path (svg инлайном),
+                                # "mdi:home" / "sdi:home" или URL
+favicon = "favicon.svg"         # необяз · нет — иконка вкладки, тоже из icon_path
+link_mode = "auto"              # необяз · auto — какую ссылку открывать: auto (локально
+                                # alt, снаружи link), main (всегда link), alt (всегда alt);
+                                # старое имя ключа — main_alt
 
 
-# ─────────────────────────────────────────────────────────────────────
-#  [group:Имя] — группа карточек. Все ключи необязательны.
-#  priority — это номер СТОЛБЦА (1 — самый левый), а не порядок в списке.
-#  color — акцент группы и цвет её иконок по умолчанию: имя палитры Dracula
-#  (purple, pink, cyan, green, orange, yellow, red, comment), hex (#ff79c6)
-#  или запись «имя/#hex». Без color акцент подбирается по имени группы
-#  и не меняется между перезапусками.
-# ─────────────────────────────────────────────────────────────────────
-[group:Group1]
-priority = 1                   # столбец; больше числа cols — заворачивается по кругу
-color = green                  # акцент группы
-
-[group:Group2]
-name = "Медиа"                 # подпись; по умолчанию — имя секции
-priority = 2
-color = "#8be9fd"              # hex в кавычках: иначе «#» съест комментарий
-
-[group:Group3]
-link = "Group2"                # объединить с Group2: тот же столбец, сразу под ней
-                               # (цепочки A → B → C работают, циклы не ломают страницу)
-
-[group:Group4]
-priority = 3
-color = "red/#ff5555"          # «имя/#hex»: «#ff5555» — для полосок, accent — red
-cols = 2                       # столбцов карточек в этой группе; иначе system.group_cols
-
-# Группу Default можно вообще не описывать: сюда попадают сервисы без group.
-# [group:Default]
-# priority = 1
-# [group:Group5]              # группа без сервисов тоже рисуется — «здесь пока пусто»
-# priority = 1
+# группа карточек; имя секции — её identity, name — подпись
+[group:Main]
+name = "Мои сервисы"           # необяз · имя секции
+priority = 1                    # необяз · в свободный столбец — это НОМЕР СТОЛБЦА (1 — левый)
+color = "cyan"                  # необяз · акцент по имени группы; имя палитры Dracula
+                                # (purple, pink, cyan, green, orange, yellow, red, comment),
+                                # #hex или "имя/#hex"
+cols = 3                        # необяз · system.group_cols — столбцов карточек в группе,
+                                # 0 — сколько влезет
+# link = "Other"                # необяз · объединить с группой Other: тот же столбец,
+                                # сразу под ней
+# Группу Default можно не описывать — сервисы без group попадают туда.
 
 
-# ─────────────────────────────────────────────────────────────────────
-#  [service:Имя] — одна карточка. Все ключи необязательны: без link и alt
-#  карточка просто никуда не ведёт (но иконка, пинг и виджеты видны).
-# ─────────────────────────────────────────────────────────────────────
-[service:ThisHost]
-name = "Этот хост"             # подпись; по умолчанию — имя секции
-icon = "mdi:server"            # файл из icon_path (svg — инлайном), mdi:/sdi: или URL
-icon_color = "cyan"            # цвет иконки; по умолчанию — акцент группы
-desc = "CPU, память и диск"   # описание под названием
-group = "Group1"              # группа; без ключа — Default
-priority = 1                   # порядок внутри группы: меньше — выше
-widget = "cpu, ram, disk"     # секции [widget:…] через запятую: каждая следующая
-                               # рисуется под предыдущей, максимум 4 поля на виджет
-# link = "http://192.168.1.10:19999"   # откроется по клику
-# alt = "http://localhost:19999"        # вторая (локальная) ссылка
-# new_page = true                       # открыть в новой вкладке; иначе system.open_in_new_page
-# ping = "192.168.1.10:19999"           # точка статуса: TCP-подключение к host:port,
-#                                        # порт по умолчанию 443; без ключа — точки нет
-# ping_timeout = 2                       # секунд на попытку; по умолчанию 2
-
-[service:Grafana]
-link = "https://grafana.example.com"
-alt = http://192.168.1.10:3000          # без кавычек тоже можно: пробелов и «#» нет
-icon = "chart.svg"
-icon_link = "https://grafana.example.com/logo.png"   # внешняя картинка: берётся,
-                                                     # если icon не найден
-desc = "Метрики и дашборды"
-group = "Group2"
-priority = 1
-new_page = true
-# ping = "grafana.example.com:443"      # точка статуса: TCP-подключение к host:port
-# ping_timeout = 2                     # секунд на попытку; по умолчанию 2
-# widget = "portainer, adguard"         # любые секции [widget:…] из списка ниже
-
-# Сервис без group попадает в Default; без icon рисуется плейсхолдер
-# с первой буквой названия — этого достаточно, чтобы начать.
-[service:Jellyfin]
-link = http://192.168.1.20:8096
-desc = "Фильмы и сериалы"
+# карточка; имя секции — identity, name — подпись
+[service:Example]
+name = "Пример"                 # необяз · имя секции
+link = "https://example.com"    # необяз · нет — основная ссылка
+alt = "http://192.168.1.10:3000" # необяз · нет — вторая (локальная) ссылка;
+                                # без link и alt карточка никуда не ведёт, но рисуется
+icon = "mdi:server"             # необяз · плейсхолдер с первой буквой; icon главнее icon_link
+icon_link = "https://example.com/logo.png"  # необяз · нет — внешняя картинка
+icon_color = "cyan"             # необяз · акцент группы
+desc = "Все ключи карточки"    # необяз · нет — подпись под названием
+group = "Main"                  # необяз · Default
+priority = 1                    # необяз · по имени — порядок внутри группы, меньше — выше
+new_page = true                 # необяз · system.open_in_new_page
+widget = "cpu"                  # необяз · пусто — секции [widget:…] через запятую,
+                                # каждая следующая стопкой, максимум 4 поля на виджет
+ping = "1.1.1.1:443"            # необяз · нет точки — точка статуса: host или host:port
+                                # (TCP-подключение, порт по умолчанию 443)
+ping_timeout = 2                # необяз · 2 — секунд на попытку
 
 
-# ═════════════════════════════════════════════════════════════════════
-#  [widget:Имя] — живое состояние карточки. Имя секции внутреннее:
-#  на него ссылается service.widget. Общие ключи у всех типов:
-#
-#    type      — тип источника (алиас: kind); можно не писать, если задан host
-#    fields    — какие поля показывать и в каком порядке: "total, disabled, enabled";
-#                неизвестное имя — предупреждение, а не падение; лишнее сверх
-#                четырёх отбрасывается с конца
-#    timeout   — секунд на запрос, по умолчанию 4
-#    verify_tls — true/false; по умолчанию false, то есть самоподписанный
-#                сертификат принимается
-#
-#  Секции можно объявлять все сразу: пока ни один сервис на виджет не
-#  ссылается, он никуда не ходит. Ключи, нужные типу, — в комментариях
-#  над каждой секцией; в полях ниже они заполнены заглушками через
-#  ${VAR:-…}, чтобы конфиг был валиден без единой переменной окружения.
-#  Секреты держите в config/.env (см. config/.env.example), а в конфиге
-#  пишите ${PORTAINER_KEY} — в git тогда не попадёт ничего.
-# ═════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
+#  [widget:Имя] — живое состояние карточки; service.widget ссылается на
+#  имя секции. Общие ключи у всех типов (ключи самого типа — ниже):
+#    type = portainer                     # что спрашивать; можно опустить
+#                                          # вместе с host + external
+#    fields = "running, total"            # необяз · все поля типа и в их
+#                                          # порядке; сверх четырёх — отброшено
+#    timeout = 4                           # необяз · 4 — секунд на запрос
+#    verify_tls = false                    # необяз · false — самоподписанный
+#                                          # сертификат принимается
+#    host = "192.168.0.112:24556"        # необяз · взять готовый виджет с
+#    external = "portainer"               # соседнего дашборда (host — его
+#                                          # адрес, external — имя [widget:…]
+#                                          # у него); тип тогда придёт оттуда
+#  Пока на виджет никто не ссылается, он никуда не ходит: объявить можно
+#  все сразу.
+# ═══════════════════════════════════════════════════════════════════
 
-# ── portainer: контейнеры Docker через API Portainer ────────────────
-# нужны: url, key (+ env); поля: running, stopped, total
+# контейнеры Docker через API Portainer
 [widget:portainer]
 type = portainer
-url = "https://192.168.0.112:9000"
-key = "${PORTAINER_KEY:-portainer-access-token}"   # My account → Access tokens
-env = 1                        # номер окружения (endpoint) в Portainer
-verify_tls = false             # самоподписанный сертификат — норма
+url = "https://192.168.0.112:9000"  # ОБЯЗ — база API
+key = "${PORTAINER_KEY:-token}"     # ОБЯЗ — API-ключ (My account → Access tokens)
+env = 1                              # необяз · 1 — номер endpoint (окружения)
+# fields = "running, stopped, total" # необяз · все поля: running, stopped, total
+# host = "192.168.0.112:24556"      # external-режим: адрес соседа (http:// добавится)
+# external = "portainer"            # …и имя секции [widget:…] у него
 
-# ── adguard: /control/stats у AdGuard Home ──────────────────────────
-# нужен: url (+ username, password); поля: queries, blocked, filtered, latency
+# /control/stats у AdGuard Home
 [widget:adguard]
 type = adguard
-url = "http://192.168.0.11:8080"
-username = "${ADGUARD_USERNAME:-admin}"
-password = "${ADGUARD_PASSWORD:-}"
-fields = "blocked, queries, latency"   # свой порядок полей
+url = "http://192.168.0.11:8080"    # ОБЯЗ
+username = "${ADGUARD_USERNAME:-admin}"   # необяз · без входа, если API открыт
+password = "${ADGUARD_PASSWORD:-}"        # необяз · то же
+# fields = "queries, blocked, filtered, latency"   # необяз · все поля
+# host = "192.168.0.11:24556"
+# external = "adguard"
 
-# ── npm: Nginx Proxy Manager ────────────────────────────────────────
-# нужны: url, username, password; поля: enabled, disabled, total
+# Nginx Proxy Manager
 [widget:npm]
 type = npm
-url = "http://192.168.0.11:81"
-username = "${NPM_USERNAME:-admin@example.com}"
-password = "${NPM_PASSWORD:-change-me}"
+url = "http://192.168.0.11:81"                    # ОБЯЗ
+username = "${NPM_USERNAME:-admin@example.com}"   # ОБЯЗ — e-mail
+password = "${NPM_PASSWORD:-change-me}"           # ОБЯЗ
+# fields = "enabled, disabled, total"             # необяз · все поля
+# host = "192.168.0.11:24556"
+# external = "npm"
 
-# ── minecraft: статус сервера по UDP ────────────────────────────────
-# нужен: url в виде host:port (или udp://host:port); поля: status, players, version
+# статус Minecraft-сервера по UDP
 [widget:minecraft]
 type = minecraft
-url = "192.168.0.11:25565"
-timeout = 2
+url = "192.168.0.11:25565"          # ОБЯЗ — host:port или udp://host:port
+# fields = "status, players, version"   # необяз · все поля
+# host = "192.168.0.11:24556"
+# external = "minecraft"
 
-# ── changedetectionio: наблюдения за страницами ─────────────────────
-# нужны: url, key; поля: diffsDetected, totalObserved
+# наблюдения за страницами (changedetection.io)
 [widget:changedetection]
 type = changedetectionio
-url = "http://192.168.0.11:5000"
-key = "${CHANGEDETECTION_KEY:-api-key}"
+url = "http://192.168.0.11:5000"     # ОБЯЗ
+key = "${CHANGEDETECTION_KEY:-key}"  # ОБЯЗ — Settings → API
+# fields = "diffsDetected, totalObserved"   # необяз · все поля
+# host = "192.168.0.11:24556"
+# external = "changedetection"
 
-# ── uptimekuma: страница статуса ───────────────────────────────────
-# нужны: url, slug (адрес страницы статуса); поля: up, down, uptime, incident
+# страница статуса Uptime Kuma
 [widget:uptimekuma]
 type = uptimekuma
-url = "http://192.168.0.11:3001"
-slug = "main"
+url = "http://192.168.0.11:3001"     # ОБЯЗ
+slug = "main"                        # ОБЯЗ — адрес страницы статуса
+# fields = "up, down, uptime, incident"   # необяз · все поля
+# host = "192.168.0.11:24556"
+# external = "uptimekuma"
 
-# ── yourspotify: статистика прослушиваний ───────────────────────────
-# нужны: url, key (+ interval); поля: songs, time, artists;
-# interval: day, week (по умолчанию), month, year, all
+# статистика прослушиваний Your Spotify
 [widget:spotify]
 type = yourspotify
-url = "${YOURSPOTIFY_URL:-http://192.168.0.11:8000}"
-key = "${YOURSPOTIFY_KEY:-api-key}"
-interval = week
+url = "${YOURSPOTIFY_URL:-http://192.168.0.11:8000}"   # ОБЯЗ
+key = "${YOURSPOTIFY_KEY:-key}"                       # ОБЯЗ — ключ пользователя
+interval = week                       # необяз · week; day, month, year, all
+# fields = "songs, time, artists"     # необяз · все поля
+# host = "192.168.0.11:24556"
+# external = "spotify"
 
-# ── watchtower: /v1/metrics (prometheus-текст) ─────────────────────
-# нужны: url, key (WATCHTOWER_HTTP_API_TOKEN);
-# поля: containers_scanned, containers_updated, containers_failed
+# метрики Watchtower (/v1/metrics)
 [widget:watchtower]
 type = watchtower
-url = "http://192.168.0.11:8080"
-key = "${WATCHTOWER_KEY:-token}"
+url = "http://192.168.0.11:8081"      # ОБЯЗ
+key = "${WATCHTOWER_KEY:-token}"      # ОБЯЗ — WATCHTOWER_HTTP_API_TOKEN
+# fields = "containers_scanned, containers_updated, containers_failed"  # необяз · все поля
+# host = "192.168.0.11:24556"
+# external = "watchtower"
 
-# ── cpu: сам хост, где живёт dashboard (в контейнере — контейнер) ───
-# обязательных нет; поля: cpu, cputemp, uptime
-# units — metric (по умолчанию) или imperial: только для температуры
-# tempmin / tempmax — шкала температуры: ниже min — зелёная, выше max — красная
+# сам хост, где живёт dashboard (в контейнере — контейнер)
 [widget:cpu]
-type = cpu                     # старое имя sysinfo (и system) значит то же самое
-fields = "cpu, cputemp, uptime"
-tempmin = 20
-tempmax = 90
-units = metric
+type = cpu                           # старое имя sysinfo — то же самое
+tempmin = 0                          # необяз · 0 — нижняя граница шкалы температуры
+tempmax = 100                        # необяз · 100 — верхняя
+units = metric                        # необяз · metric; imperial — только для температуры
+# fields = "cpu, cputemp, uptime"    # необяз · все поля
+# host = "192.168.0.11:24556"
+# external = "cpu"
 
-# ── ram: оперативная память ────────────────────────────────────────
-# обязательных нет; поля: free, consumed, total
-# ramunits — bytes (по умолчанию, 1.5 GB) или bbytes (1.4 GiB)
+# оперативная память хоста
 [widget:ram]
 type = ram
-fields = "consumed, free, total"
-ramunits = bbytes
+ramunits = bytes                      # необяз · bytes (GB, 1000); bbytes — GiB (1024)
+# fields = "free, consumed, total"    # необяз · все поля
+# host = "192.168.0.11:24556"
+# external = "ram"
 
-# ── disk: свободное место ──────────────────────────────────────────
-# нужен: disk — пути как есть, можно несколько (складываются в одно число):
-# "/", "/mnt/data", а на windows "C:\, D:\"; поля: free, consumed, total
-# diskunits — bytes или bbytes; name — подпись виджета на карточке
-# (без неё подпись — сами пути, коротко: «C:» · «…/lib/docker» +1)
+# свободное место; несколько путей складываются в одно число
 [widget:disk]
 type = disk
-disk = "/"
-name = "System"
-diskunits = bbytes
-fields = "free, consumed, total"
-
-# ── виджет с чужого хоста: тот же дашборд, другой компьютер ────────
-# нужны: host (адрес соседа, http:// добавится сам);
-# external — имя секции [widget:…] на том дашборде;
-# type можно не писать — тип придёт вместе с данными; поля, units и name
-# берутся свои, поэтому одна и та же цифра здесь может быть в GiB.
-# Сосед отдаёт GET /api/widget?id=disk, а его адреса в браузере нет:
-# сервер ходит сам, клиент видит только «from another dashboard».
-# [widget:nas]
-# type = disk
+disk = "/"                            # ОБЯЗ — пути: "/", "/mnt/data"; на windows "C:\, D:\"
+diskunits = bytes                     # необяз · bytes (GB); bbytes — GiB
+name = "System"                       # необяз · подпись виджета; без неё — сами пути
+# fields = "free, consumed, total"    # необяз · все поля
+# host = "192.168.0.11:24556"
 # external = "disk"
-# host = "192.168.0.112:24556"
-# name = "NAS"
-# diskunits = bbytes
-# fields = ["free", "consumed", "total"]
