@@ -847,6 +847,27 @@ class MultiWidgetTestCase(unittest.TestCase):
         self.assertEqual(spec.show("total", 1_500_000, {}), "1.5 MB")
         self.assertEqual(spec.show("total", 1_500_000, {"diskunits": "bbytes"}), "1.4 MiB")
 
+    def test_disk_paths_fold_into_a_short_label(self):
+        fold = widgets.short_disk
+        self.assertEqual(fold("C:" + chr(92) + "Program Files"), "C:/Program Files")
+        self.assertEqual(fold(chr(92)), "/")        # корень текущего диска — тоже «/»
+        self.assertEqual(fold("/"), "/")
+        self.assertEqual(fold("/mnt/data/"), "/mnt/data")
+        self.assertEqual(fold("/var/lib/docker"), "…/lib/docker")   # хвост, не весь путь
+        self.assertEqual(fold("D:" + chr(92)), "D:")
+
+    def test_disk_without_name_is_captioned_by_its_paths(self):
+        for options, caption in (("/", "/"), (["/", "/data"], "/ · /data"),
+                                 (["/a", "/b", "/c"], "/a · /b +1"), (None, None)):
+            widget = type("W", (), {"type": "disk", "options": {"disk": options}})()
+            self.assertEqual(widgets.caption_for(widget), caption, options)
+        named = type("W", (), {"type": "disk", "options": {"disk": "/", "name": "Диск"}})()
+        self.assertEqual(widgets.caption_for(named), "Диск")
+
+    def test_remote_disk_takes_caption_from_neighbour(self):
+        far = type("W", (), {"type": "disk", "options": {"external": "disk", "host": "10.0.0.2:24556"}})()
+        self.assertIsNone(widgets.caption_for(far))      # пути там свои — подпись придёт с данными
+
     def test_disk_name_is_a_compact_caption(self):
         with self.psutil_patch():
             state = widgets.run_widget(self.site.widgets["disk"])

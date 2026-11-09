@@ -854,6 +854,7 @@ class Ram(Spec):
 # --------------------------------------------------------------------------- #
 
 BINARY_UNITS = ("bbytes", "binary", "ibytes")
+DISK_CAPTION_JOIN = " · "       # несколько путей в подписи: «/ ·/data»
 
 
 def _bytes(value, binary: bool = False) -> str:
@@ -977,11 +978,44 @@ def title_for(widget) -> str:
     return spec.TITLE if spec else (widget.type or "widget")
 
 
+def short_disk(path) -> str:
+    """``C:\\Program Files`` → «C:/Program Files», ``/`` → «/», ``/mnt/data`` → «/mnt/data».
+
+    Длинный путь ужимается до двух последних шагов: ``/var/lib/docker`` → «…/lib/docker».
+    """
+    text = str(path or "").strip().replace("\\", "/")
+    if not text:
+        return ""
+    drive = ""
+    match = re.match(r"^([A-Za-z]):(.*)$", text)
+    if match:
+        drive, text = match.group(1).upper() + ":", match.group(2)
+    parts = [part for part in text.split("/") if part]
+    if not parts:
+        return drive or "/"
+    tail = "/".join(parts[-2:])
+    short = ("…/" if len(parts) > 2 else "/") + tail
+    return drive + short if drive else short
+
+
+def disk_caption(widget) -> str | None:
+    """У диска без ``name`` подпись — сами пути, но коротко: «/», «C:», «/ ·/data»."""
+    if canonical_type(widget.type) != "disk" or remote_host(widget.options):
+        return None      # у соседа пути его, а не наши: подпись придёт вместе с данными
+    paths = [short_disk(path) for path in disk_paths(widget.options.get("disk"))]
+    paths = [path for path in paths if path]
+    if not paths:
+        return None
+    if len(paths) > 2:
+        return f"{DISK_CAPTION_JOIN.join(paths[:2])} +{len(paths) - 2}"
+    return DISK_CAPTION_JOIN.join(paths)
+
+
 def caption_for(widget) -> str | None:
-    """``name = "C:"`` — подпись виджета на карточке; None, если не задана."""
+    """``name = "C:"`` — подпись виджета на карточке; у диска иначе короткие пути."""
     raw = widget.options.get("name")
     text = str(raw).strip() if raw is not None else ""
-    return text or None
+    return text or disk_caption(widget)
 
 
 def validate(widget) -> list[str]:
