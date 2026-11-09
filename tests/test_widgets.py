@@ -241,7 +241,7 @@ class PageAndRouteTests(WidgetTestCase):
             body = self.client.get("/").get_data(as_text=True)
         # адрес может быть виден в ссылке карточки — но не в точке пинга
         dot = body[body.index('class="card-ping'):][:200]
-        self.assertIn('title="Ping: Unknown"', dot)       # до первого ответа — честное «нет данных»
+        self.assertIn('data-tip="Ping: Unknown"', dot)    # до первого ответа — честное «нет данных»
         self.assertNotIn("192.0.2.10", dot)
 
     def test_ping_tooltip_words(self):
@@ -258,6 +258,26 @@ class PageAndRouteTests(WidgetTestCase):
         response = self.client.get("/api/state")
         self.assertEqual(response.status_code, 200)
         self.assertIn("cards", json.loads(response.get_data(as_text=True)))
+
+    def test_error_tooltip_rides_on_data_tip(self):
+        from urllib.error import URLError
+
+        def opener(request, timeout=None, context=None):
+            raise URLError(ConnectionRefusedError(10061, "No connection could be made"))
+        with mock.patch.object(widgets, "urlopen", opener):
+            widgets.snapshot(load(self.path), online=True)
+            body = self.client.get("/").get_data(as_text=True)
+        self.assertIn('data-phase="error"', body)
+        self.assertIn('data-tip="Port closed."', body)   # причина по-английски, без адреса
+        self.assertNotIn(' title="', body)               # родных подсказок нет: они медлят
+
+    def test_tooltip_is_ours_and_quick(self):
+        js = open("static/js/app.js", encoding="utf-8").read()
+        css = open("static/css/style.css", encoding="utf-8").read()
+        self.assertIn("var TIP_DELAY = 90;", js)
+        self.assertIn('closest("[data-tip]")', js)
+        self.assertIn(".tip {", css)
+        self.assertIn(".tip.on", css)
 
     def test_page_state_is_prefilled_from_cache(self):
         payload = [{"State": "running"}]
@@ -429,7 +449,7 @@ class TypedWidgetTests(WidgetTestCase):
         state = self.run_typed('type = "npm"\nurl = "http://npm"\nusername = "u"\npassword = "p"\n',
                                {"/api/tokens": {"error": "bad credentials"}})
         self.assertFalse(state["ok"])
-        self.assertIn("токен", state["error"])
+        self.assertIn("no token", state["error"])
 
     def test_minecraft_reads_status_packet(self):
         conn = FakeConn(mc_frame({"players": {"online": 3, "max": 8},
@@ -450,7 +470,7 @@ class TypedWidgetTests(WidgetTestCase):
         with mock.patch.object(widgets.socket, "create_connection", refuse):
             state = self.run_typed('type = "minecraft"\nurl = "192.0.2.5:25565"\n', {})
         self.assertFalse(state["ok"])
-        self.assertIn("Minecraft", state["error"])
+        self.assertEqual(state["error"], "Connection refused.")   # причина без имени: оно и так на карточке
 
     def test_changedetection_counts_unread_diffs(self):
         watches = {"u1": {"last_changed": 5, "viewed": False},
@@ -524,8 +544,7 @@ class FailureShapeTests(WidgetTestCase):
             site = load(self.path)
             state = widgets.run_widget(site.widgets["box"])
         self.assertFalse(state["ok"])
-        self.assertEqual(state["label"], "нет связи")
-        self.assertIn("порт закрыт", state["error"])
+        self.assertEqual(state["error"], "Port closed.")   # одна фраза по-английски
         self.assertNotIn("192.0.2.10", state["error"])
         self.assertNotIn("9000", state["error"])
         self.assertNotIn("WinError", state["error"])
@@ -552,5 +571,4 @@ class FailureShapeTests(WidgetTestCase):
         with mock.patch.object(widgets, "urlopen", opener):
             site = load(self.path)
             state = widgets.run_widget(site.widgets["box"])
-        self.assertEqual(state["label"], "нет доступа")
-        self.assertIn("401", state["error"])
+        self.assertEqual(state["error"], "Access denied: HTTP 401.")

@@ -46,16 +46,14 @@ CROSS = "✕"                # значение поля, когда данны�
 
 
 class WidgetFailure(Exception):
-    """Причина, которую не стыдно показать прямо в карточке.
+    """Причина, которую не стыдно показать в подсказке.
 
-    ``label`` — два слова для карточки, ``str(error)`` — подсказка при
-    наведении. Ни адресов, ни кодов ОС: клиенту незачем знать, куда именно мы
-    стучимся (так же, как у ping).
+    ``str(error)`` — одна короткая фраза по-английски, без адреса и кодов ОС:
+    клиенту незачем знать, куда именно мы стучимся (так же, как у ping).
     """
 
-    def __init__(self, detail: str, label: str = "ошибка"):
+    def __init__(self, detail: str):
         super().__init__(detail)
-        self.label = label
 
 
 _ADDRESS = re.compile(r"(?:https?://)?(?:\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-fA-F:]+\])(?::\d+)?")
@@ -71,26 +69,26 @@ _DNS = (11001, 11004, -2, -3, 8)
 def _clean(text: str) -> str:
     """Причина без адреса и кодов ОС."""
     text = _WINERR.sub("", str(text or ""))
-    text = _ADDRESS.sub("адрес", text)
+    text = _ADDRESS.sub("address", text)
     return " ".join(text.split()).strip(" :.,")
 
 
 def _reason_text(reason) -> str:
-    """Отказ соединения коротко и по-русски: без адреса, кода и английского хвоста."""
+    """Отказ соединения одной фразой по-английски: без адреса и кода ОС."""
     code = getattr(reason, "errno", None)
     if code is None and isinstance(reason, int):
         code = reason
     if code in _REFUSED:
-        return "порт закрыт"
+        return "Port closed"
     if code in _TIMEOUT:
-        return "нет ответа"
+        return "No response"
     if code in _UNREACH:
-        return "узел недоступен"
+        return "Host unreachable"
     if code in _DNS:
-        return "имя не найдено"
+        return "Name not resolved"
     text = _clean(reason)
-    if not text or len(text) > 40 or not re.search(r"[а-яё]", text, re.I):
-        return "соединение не установлено"   # английские хвосты ОС не переводим
+    if not text or len(text) > 40 or not re.search(r"[A-Za-z]", text):
+        return "Connection failed"   # хвост ОС без латиницы ни о чём не говорит
     return text
 
 
@@ -103,7 +101,7 @@ def _truthy(value) -> bool:
 # --------------------------------------------------------------------------- #
 
 def _request(url: str, headers: dict | None = None, data: bytes | None = None,
-             timeout: float = DEFAULT_TIMEOUT, insecure: bool = True, name: str = "Сервис") -> bytes:
+             timeout: float = DEFAULT_TIMEOUT, insecure: bool = True) -> bytes:
     """Один GET/POST: любая беда — WidgetFailure с человеческой причиной."""
     request = Request(url, headers=headers or {}, data=data)
     context = ssl._create_unverified_context() if insecure else None
@@ -112,19 +110,20 @@ def _request(url: str, headers: dict | None = None, data: bytes | None = None,
         with urlopen(request, timeout=timeout, context=context) as response:
             return response.read(4_000_000)
     except HTTPError as error:
-        label = "нет доступа" if error.code in (401, 403) else "ошибка API"
-        raise WidgetFailure(f"{name}: HTTP {error.code}", label) from error
+        kind = "Access denied" if error.code in (401, 403) else "API error"
+        raise WidgetFailure(f"{kind}: HTTP {error.code}") from error
     except URLError as error:
-        raise WidgetFailure(f"нет связи: {_reason_text(error.reason)}", "нет связи") from error
+        raise WidgetFailure(_reason_text(error.reason)) from error
     except (socket.timeout, TimeoutError) as error:
-        raise WidgetFailure("нет связи: нет ответа", "нет связи") from error
+        raise WidgetFailure("No response") from error
 
 
-def _json(raw: bytes, name: str = "Сервис"):
+def _json(raw: bytes, hint: str = ""):
+    """JSON из ответа; hint — догадка, что проверить, если пришло не то."""
     try:
         return json.loads(raw.decode("utf-8", "replace"))
     except ValueError as error:
-        raise WidgetFailure(f"{name}: ответ не JSON") from error
+        raise WidgetFailure("Response is not JSON" + (f" — {hint}" if hint else "")) from error
 
 
 def _basic(user: str, password: str) -> str:
@@ -191,8 +190,8 @@ class Portainer(Spec):
             "Accept": "application/json",
             "User-Agent": "homepage-dashboard",
         }, timeout=float(options.get("timeout", DEFAULT_TIMEOUT)),
-            insecure=not _truthy(options.get("verify_tls", False)), name="Portainer")
-        payload = _json(raw, "Portainer — включён ли API?")
+            insecure=not _truthy(options.get("verify_tls", False)))
+        payload = _json(raw)
         containers = payload if isinstance(payload, list) else payload.get("containers") or []
         running = sum(1 for item in containers if str(item.get("State", "")).lower() == "running")
         total = len(containers)
@@ -228,10 +227,10 @@ class AdGuard(Spec):
             headers["Authorization"] = _basic(str(options.get("username")), str(options.get("password", "")))
         raw = _request(f"{base}/control/stats", headers,
                        timeout=float(options.get("timeout", DEFAULT_TIMEOUT)),
-                       insecure=not _truthy(options.get("verify_tls", False)), name="AdGuard")
-        stats = _json(raw, "AdGuard")
+                       insecure=not _truthy(options.get("verify_tls", False)))
+        stats = _json(raw)
         if not isinstance(stats, dict):
-            raise WidgetFailure("AdGuard: неожиданный ответ /control/stats")
+            raise WidgetFailure("Unexpected answer from /control/stats")
         return {
             "queries": _number(stats.get("num_dns_queries")),
             "blocked": _number(stats.get("num_blocked_filtering")),
@@ -274,10 +273,10 @@ class Npm(Spec):
         body = json.dumps({"identity": user, "secret": password}).encode("utf-8")
         raw = _request(f"{base}/api/tokens", {"Content-Type": "application/json",
                                               "Accept": "application/json"}, data=body,
-                       timeout=timeout, insecure=insecure, name="NPM")
-        token = (_json(raw, "NPM") or {}).get("token")
+                       timeout=timeout, insecure=insecure)
+        token = (_json(raw) or {}).get("token")
         if not token:
-            raise WidgetFailure("NPM не выдал токен — проверь логин и пароль")
+            raise WidgetFailure("NPM returned no token — check login and password")
         _NPM_TOKENS[key] = (token, time.monotonic() + NPM_TOKEN_TTL)
         return token
 
@@ -289,10 +288,10 @@ class Npm(Spec):
                             str(options.get("password", "")), timeout, insecure)
         raw = _request(f"{base}/api/nginx/proxy-hosts",
                        {"Authorization": "Bearer " + token, "Accept": "application/json"},
-                       timeout=timeout, insecure=insecure, name="NPM")
-        hosts = _json(raw, "NPM")
+                       timeout=timeout, insecure=insecure)
+        hosts = _json(raw)
         if not isinstance(hosts, list):
-            raise WidgetFailure("NPM: неожиданный ответ /api/nginx/proxy-hosts")
+            raise WidgetFailure("Unexpected answer from /api/nginx/proxy-hosts")
         enabled = sum(1 for host in hosts if host.get("enabled"))
         return {"enabled": enabled, "disabled": len(hosts) - enabled, "total": len(hosts)}
 
@@ -333,7 +332,7 @@ def _take_varint(buffer: bytes, pos: int) -> tuple[int, int]:
         value |= (byte & 0x7F) << shift
         if not byte & 0x80:
             return value, pos
-    raise WidgetFailure("Minecraft: битый пакет")
+    raise WidgetFailure("Minecraft: broken packet")
 
 
 def _read_exactly(conn, size: int) -> bytes:
@@ -341,7 +340,7 @@ def _read_exactly(conn, size: int) -> bytes:
     while len(data) < size:
         chunk = conn.recv(size - len(data))
         if not chunk:
-            raise WidgetFailure("Minecraft закрыл соединение")
+            raise WidgetFailure("Minecraft: closed the connection")
         data += chunk
     return data
 
@@ -363,7 +362,7 @@ def minecraft_status(target: str, timeout: float = DEFAULT_TIMEOUT) -> dict:
                 if len(raw) >= 6 and _packet_complete(raw):
                     break
     except (OSError, ValueError) as error:
-        raise WidgetFailure(f"Minecraft: {_reason_text(error)}", "нет связи") from error
+        raise WidgetFailure(_reason_text(error)) from error
     # тело пакета: varint длина, varint id, varint длина JSON, JSON
     length, pos = _take_varint(raw, 0)
     packet = raw[pos:pos + length]
@@ -373,7 +372,7 @@ def minecraft_status(target: str, timeout: float = DEFAULT_TIMEOUT) -> dict:
     try:
         status = json.loads(text or "{}")
     except ValueError as error:
-        raise WidgetFailure("Minecraft: не разобрал ответ") from error
+        raise WidgetFailure("Minecraft: cannot parse the answer") from error
     players = status.get("players") or {}
     version = (status.get("version") or {}).get("name")
     return {"status": "Up", "players": f"{players.get('online', '?')} / {players.get('max', '?')}",
@@ -421,10 +420,10 @@ class ChangeDetectionIo(Spec):
         raw = _request(f"{base}/api/v1/watch", {"x-api-key": str(options.get("key", "")),
                                                  "Accept": "application/json"},
                        timeout=float(options.get("timeout", DEFAULT_TIMEOUT)),
-                       insecure=not _truthy(options.get("verify_tls", False)), name="changedetection.io")
-        watches = _json(raw, "changedetection.io")
+                       insecure=not _truthy(options.get("verify_tls", False)))
+        watches = _json(raw)
         if not isinstance(watches, dict):
-            raise WidgetFailure("changedetection.io: неожиданный ответ /api/v1/watch")
+            raise WidgetFailure("Unexpected answer from /api/v1/watch")
         diffs = sum(1 for watch in watches.values()
                     if _number(watch.get("last_changed")) > 0 and not watch.get("viewed"))
         return {"diffsDetected": diffs, "totalObserved": len(watches)}
@@ -467,9 +466,9 @@ class UptimeKuma(Spec):
         timeout = float(options.get("timeout", DEFAULT_TIMEOUT))
         insecure = not _truthy(options.get("verify_tls", False))
         page = _json(_request(f"{base}/api/status-page/{slug}", {"Accept": "application/json"},
-                              timeout=timeout, insecure=insecure, name="Uptime Kuma"), "Uptime Kuma")
+                              timeout=timeout, insecure=insecure))
         beats = _json(_request(f"{base}/api/status-page/heartbeat/{slug}", {"Accept": "application/json"},
-                               timeout=timeout, insecure=insecure, name="Uptime Kuma"), "Uptime Kuma")
+                               timeout=timeout, insecure=insecure))
         up = down = 0
         for history in (beats.get("heartbeatList") or {}).values():
             last = history[-1] if history else None
@@ -533,8 +532,8 @@ class YourSpotify(Spec):
                   f"&timeSplit=all&start={quote(spotify_start(str(options.get('interval', 'week'))), safe='')}")
         raw = _request(target, {"Accept": "application/json"},
                        timeout=float(options.get("timeout", DEFAULT_TIMEOUT)),
-                       insecure=not _truthy(options.get("verify_tls", False)), name="Your Spotify")
-        payload = _json(raw, "Your Spotify")
+                       insecure=not _truthy(options.get("verify_tls", False)))
+        payload = _json(raw)
         return payload if isinstance(payload, list) else []
 
     def fetch(self, options: dict) -> dict:
@@ -572,14 +571,14 @@ class Watchtower(Spec):
         base = str(options.get("url", "")).rstrip("/")
         raw = _request(f"{base}/v1/metrics", {"Authorization": "Bearer " + str(options.get("key", ""))},
                        timeout=float(options.get("timeout", DEFAULT_TIMEOUT)),
-                       insecure=not _truthy(options.get("verify_tls", False)), name="Watchtower")
+                       insecure=not _truthy(options.get("verify_tls", False)))
         metrics: dict[str, float] = {}
         for line in raw.decode("utf-8", "replace").splitlines():
             match = WATCHTOWER_METRIC.match(line.strip())
             if match:
                 metrics[match.group(1)] = float(match.group(2))   # без префикса watchtower_
         if not metrics:
-            raise WidgetFailure("Watchtower: в /v1/metrics нет watchtower_* — включён ли API?")
+            raise WidgetFailure("No watchtower_* in /v1/metrics — is the API enabled?")
         return {key: int(metrics.get(key, 0)) for key, _label in self.FIELDS}
 
     def tone(self, key: str, value) -> str:
@@ -676,10 +675,19 @@ def _crossed(widget, spec) -> list[dict]:
             for key in field_keys(widget, spec)]
 
 
-def _failed(widget, spec, stamp: float, detail: str, label: str = "ошибка") -> dict:
-    """Ошибка — полноправное состояние карточки: кресты, короткий ярлык, причина."""
-    return {"ok": False, "type": widget.type, "at": stamp, "label": label,
-            "error": _clean(detail) or label,
+def _sentence(text: str) -> str:
+    """Причина одной фразой для подсказки: без хвостов, с точкой на конце."""
+    text = _clean(text)
+    if not text:
+        return "Unknown error."
+    text = text[0].upper() + text[1:]
+    return text if text[-1] in ".!?" else text + "."
+
+
+def _failed(widget, spec, stamp: float, detail: str) -> dict:
+    """Ошибка — полноправное состояние карточки: кресты и причина в подсказке."""
+    return {"ok": False, "type": widget.type, "at": stamp,
+            "error": _sentence(detail),
             "fields": _crossed(widget, spec) if spec is not None else []}
 
 
@@ -688,18 +696,18 @@ def run_widget(widget) -> dict:
     spec = type_spec(widget.type)
     stamp = time.time()
     if spec is None:
-        return _failed(widget, None, stamp, f"неизвестный тип {widget.type}", "нет виджета")
+        return _failed(widget, None, stamp, f"Unknown widget type {widget.type}")
     missing = [key for key in spec.REQUIRED if not widget.options.get(key)]
     if missing:
-        return _failed(widget, spec, stamp, "не хватает " + ", ".join(missing), "не настроен")
+        return _failed(widget, spec, stamp, "Not configured: missing " + ", ".join(missing))
     try:
         values = spec.fetch(widget.options)
     except WidgetFailure as error:
-        return _failed(widget, spec, stamp, str(error), getattr(error, "label", "ошибка"))
+        return _failed(widget, spec, stamp, str(error))
     except Exception as error:  # noqa: BLE001 — виджет не имеет права ронять страницу
         return _failed(widget, spec, stamp, f"{type(error).__name__}: {error}")
     if not isinstance(values, dict):
-        return _failed(widget, spec, stamp, "виджет вернул не словарь")
+        return _failed(widget, spec, stamp, "Widget returned no data")
     labels = labels_for(spec)
     fields = []
     for key in field_keys(widget, spec):
@@ -717,17 +725,17 @@ def split_target(target: str, fallback_port: int | None = None) -> tuple[str, in
     """``host``, ``host:port`` и ``http(s)://host:port/путь`` → (host, port)."""
     text = (target or "").strip()
     if not text:
-        raise ValueError("пустой адрес")
+        raise ValueError("Empty target")
     if "://" not in text:
         text = "//" + text
     parts = urlsplit(text)
     host = parts.hostname
     if not host:
-        raise ValueError(f"не разобрал адрес {target!r}")
+        raise ValueError(f"Cannot parse target {target!r}")
     try:
         port = parts.port
     except ValueError as error:
-        raise ValueError(f"не разобрал порт в {target!r}") from error
+        raise ValueError(f"Cannot parse port in {target!r}") from error
     if port is None:
         if parts.scheme == "https":
             port = 443

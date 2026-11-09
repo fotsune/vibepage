@@ -130,7 +130,7 @@ def _widget_view(service: Service, site: Site) -> dict | None:
     widget = site.widgets.get(group_key(service.widget))
     if widget is None:
         return {"name": service.widget, "title": service.widget, "fields": [], "ok": False,
-                "error": "виджет не объявлен", "at": 0}
+                "error": "Widget is not declared.", "at": 0}
     spec_fields = widget_lib.fields_for(widget)
     state = widget_lib.peek_widget(widget)
     failed = bool(state) and not state.get("ok")   # ошибка уже известна — кресты, не старые цифры

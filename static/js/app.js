@@ -71,7 +71,7 @@
     /* подсказка чипа описывает ту ссылку, на которую он теперь ведёт */
     chips.forEach(function (chip) {
       var hint = mode === "alt" ? chip.dataset.titleAlt : chip.dataset.titleMain;
-      if (hint) { chip.title = hint; }
+      if (hint) { chip.dataset.tip = hint; }
     });
     switchButtons.forEach(function (button) {
       button.setAttribute("aria-pressed", button.dataset.mode === mode ? "true" : "false");
@@ -121,6 +121,78 @@
     });
   });
 
+  /* ------------------------------------------------------------ подсказки */
+  /* Своя подсказка вместо title: родная всплывает почти через секунду, а
+     причина ошибки и пинг нужны сразу. Текст живёт в data-tip и адресов не
+     содержит — это забота сервера, как и у ping. */
+  var TIP_DELAY = 90;
+  var tipNode = null;
+  var tipTarget = null;
+  var tipTimer = null;
+
+  function tipFor(node) {
+    return node && node.closest ? node.closest("[data-tip]") : null;
+  }
+
+  function placeTip(el) {
+    var box = el.getBoundingClientRect();
+    var own = tipNode.getBoundingClientRect();
+    var gap = 7;
+    var left = box.left + (box.width - own.width) / 2;
+    var top = box.top - own.height - gap;
+    if (top < 8) { top = Math.min(box.bottom + gap, window.innerHeight - own.height - 8); }
+    left = Math.max(8, Math.min(left, window.innerWidth - own.width - 8));
+    tipNode.style.left = Math.round(left) + "px";
+    tipNode.style.top = Math.round(top) + "px";
+  }
+
+  function openTip(el) {
+    var text = (el.dataset.tip || "").trim();
+    if (!text) { return; }
+    if (!tipNode) {
+      tipNode = document.createElement("div");
+      tipNode.className = "tip";
+      tipNode.setAttribute("role", "tooltip");
+      document.body.appendChild(tipNode);
+    }
+    tipNode.textContent = text;
+    tipNode.classList.add("on");
+    placeTip(el);
+  }
+
+  function closeTip() {
+    clearTimeout(tipTimer);
+    tipTimer = null;
+    tipTarget = null;
+    if (tipNode) { tipNode.classList.remove("on"); }
+  }
+
+  function armTip(el, now) {
+    if (!el || el === tipTarget) { return; }
+    closeTip();
+    tipTarget = el;
+    if (now) { openTip(el); return; }
+    tipTimer = setTimeout(function () { openTip(el); }, TIP_DELAY);
+  }
+
+  document.addEventListener("mouseover", function (event) {
+    var el = tipFor(event.target);
+    if (!el || tipFor(event.relatedTarget) === el) { return; }
+    armTip(el, false);
+  });
+  document.addEventListener("mouseout", function (event) {
+    var el = tipFor(event.target);
+    if (!el || tipFor(event.relatedTarget) === el) { return; }
+    if (el === tipTarget) { closeTip(); }
+  });
+  document.addEventListener("focusin", function (event) { armTip(tipFor(event.target), true); });
+  document.addEventListener("focusout", function (event) {
+    if (tipFor(event.target) === tipTarget) { closeTip(); }
+  });
+  document.addEventListener("click", closeTip, true);
+  window.addEventListener("scroll", closeTip, true);
+  window.addEventListener("blur", closeTip);
+
   /* ------------------------------------------------ живые карточки (ping) */
   /* Состояние всё считает сервер: здесь только раз в system.poll секунд
      спросить /api/state и перекрасить уже нарисованное. */
@@ -146,7 +218,7 @@
         node.classList.toggle("state-" + name, name === state);
       });
       var words = { ok: "Up", slow: "Slow", down: "Down" };   // те же слова, что в hp/widgets.py
-      node.title = "Ping: " + (words[state] || "Unknown") +
+      node.dataset.tip = "Ping: " + (words[state] || "Unknown") +
         (ping.ms === null || ping.ms === undefined ? "" : " · " + ping.ms + " ms");
     }
 
@@ -164,10 +236,10 @@
       });
       if (widget.ok) {
         box.dataset.phase = "ok";
-        box.removeAttribute("title");
+        delete box.dataset.tip;
       } else if (widget.error) {
         box.dataset.phase = "error";
-        box.title = widget.error;   // попап с причиной, без адреса
+        box.dataset.tip = widget.error;   // причина в подсказке, без адреса
       }
     }
 

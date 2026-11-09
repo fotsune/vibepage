@@ -38,7 +38,7 @@
     </a>
 
     <div class="topbar-tools">
-      <div class="linkmode" role="group" aria-label="Какая ссылка открывается по клику" title="Основная — link, alt — резервный адрес (внешний или локальный)">
+      <div class="linkmode" role="group" aria-label="Какая ссылка открывается по клику" data-tip="Основная — link, alt — резервный адрес (внешний или локальный)">
         <button type="button" class="linkmode-btn" data-mode="main"
                 aria-pressed="{{ 'true' if page.default_mode == 'main' else 'false' }}">основная</button>
         <button type="button" class="linkmode-btn" data-mode="alt"
@@ -81,7 +81,7 @@
         <h2 class="panel-title">
           <span class="panel-dot" aria-hidden="true"></span>
           <span class="panel-name">{{ group.name }}</span>
-          {% if group.merged %}<span class="panel-tag" title="Объединена с группой {{ group.root }}">merged</span>{% endif %}
+          {% if group.merged %}<span class="panel-tag" data-tip="Объединена с группой {{ group.root }}">merged</span>{% endif %}
           <span class="panel-count">{{ group.services|length }}</span>
         </h2>
         <div class="cards">
@@ -96,18 +96,18 @@
                 {% else %}<span class="placeholder">{{ service.initial }}</span>{% endif %}
               </span>
               <span class="card-text">
-                <span class="card-name" title="{{ service.name }}">{{ service.name }}</span>
-                {% if service.desc %}<span class="card-desc" title="{{ service.desc }}">{{ service.desc }}</span>{% endif %}
+                <span class="card-name" data-tip="{{ service.name }}">{{ service.name }}</span>
+                {% if service.desc %}<span class="card-desc" data-tip="{{ service.desc }}">{{ service.desc }}</span>{% endif %}
               </span>
               {% if service.ping %}
               <span class="card-ping state-{{ service.ping.state }}" data-ping-state="{{ service.ping.state }}"
-                    title="{{ service.ping.title }}">
+                    data-tip="{{ service.ping.title }}">
                 <span class="ping-dot" aria-hidden="true"></span>
               </span>
               {% endif %}
             </a>
             {% if service.url_alt %}
-            <a class="card-alt" href="{{ service.url_alt }}" title="{{ service.url_alt_title }}"
+            <a class="card-alt" href="{{ service.url_alt }}" data-tip="{{ service.url_alt_title }}"
                data-title-main="{{ service.chip_title_main }}" data-title-alt="{{ service.chip_title_alt }}"
                data-main="{{ service.href_alt }}" data-alt="{{ service.href_main }}"
                {% if service.new_page %}target="_blank" rel="noopener noreferrer"{% endif %}>
@@ -115,12 +115,12 @@
             </a>
             {% endif %}
             {% if service.widget %}
-            <div class="card-widget" data-widget="{{ service.widget.name }}" data-phase="{{ service.widget.phase }}"{% if service.widget.phase == "error" and service.widget.error %} title="{{ service.widget.error }}"{% endif %}>
+            <div class="card-widget" data-widget="{{ service.widget.name }}" data-phase="{{ service.widget.phase }}"{% if service.widget.phase == "error" and service.widget.error %} data-tip="{{ service.widget.error }}"{% endif %}>
               <div class="widget-fields">
                 {% for field in service.widget.fields %}
                 <div class="widget-field" data-field="{{ field.key }}">
                   <span class="widget-value tone-{{ field.tone }}">{{ field.value if field.value is not none else "—" }}</span>
-                  <span class="widget-label" title="{{ field.label }}">{{ field.label }}</span>
+                  <span class="widget-label" data-tip="{{ field.label }}">{{ field.label }}</span>
                 </div>
                 {% endfor %}
               </div>
