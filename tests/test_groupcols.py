@@ -97,4 +97,10 @@ class MarkupTests(unittest.TestCase):
         with open("static/css/style.css", encoding="utf-8") as handle:
             css = handle.read()
         self.assertIn("var(--group-cols, 99)", css)
-        self.assertIn("max(196px", css)
+        # 180, а не 196: иначе на 1920 при cols = 3 в полосу группы влезают
+        # только две карточки — третья требует 3 x 180 + 2 x 9 = 558 из 560
+        self.assertIn("max(180px", css)
+        # узкая карточка (та самая третья) считает поля мельче, иначе они
+        # вылезают за неё
+        self.assertIn("@container (max-width: 190px)", css)
+        self.assertIn("container-type: inline-size", css)

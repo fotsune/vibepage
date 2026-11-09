@@ -361,16 +361,19 @@ a { color: inherit; text-decoration: none; }
 /* ------------------------------------------------------------------ card */
 
 /* --group-cols — максимум столбцов карточек в группе (group_cols, у группы — cols):
-   доля не уже 196px, но и не шире 1/N полосы, поэтому лишние столбцы просто не влезают.
+   доля не уже 180px, но и не шире 1/N полосы, поэтому лишние столбцы просто не влезают.
+   180, а не 196: на экране 1920 при cols = 3 полоса группы — 560px, и третья
+   карточка в неё влезает только с 181px (3 x 180 + 2 x 9 = 558).
    Переменной нет — предел 99, то есть сколько поместится. */
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(max(196px, calc((100% - (var(--group-cols, 99) - 1) * 9px) / var(--group-cols, 99))), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(max(180px, calc((100% - (var(--group-cols, 99) - 1) * 9px) / var(--group-cols, 99))), 1fr));
   gap: 9px;
 }
 
 .card {
   position: relative;
+  container-type: inline-size;      /* поля виджета смотрят на ширину карточки */
   border: 1px solid var(--line-soft);
   border-radius: var(--radius);
   background: linear-gradient(155deg, var(--card), var(--card-top));
@@ -754,6 +757,10 @@ body.no-header .board { padding-top: clamp(22px, 2.8vw, 36px); }
 .card-widget:not(:last-child) { border-radius: 0; }
 
 .widget-value {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font: 600 14px/1.1 var(--mono);
   color: var(--fg-soft);
   letter-spacing: 0.2px;
@@ -765,6 +772,16 @@ body.no-header .board { padding-top: clamp(22px, 2.8vw, 36px); }
 .widget-value.tone-warn { color: var(--yellow); }
 .widget-value.tone-idle { color: var(--fg-soft); }
 .widget-value.tone-down { color: var(--red); opacity: 0.7; }   /* данных нет */
+
+/* карточка уже 190px — это три столбца в группе на экране 1920: поля теснее
+   и мельче, иначе «22.8 GiB» вылезает за карточку (блок ниже .widget-value,
+   иначе его перебьёт сокращённая запись font:) */
+@container (max-width: 190px) {
+  .widget-field { padding: 0 5px; }
+  .widget-value { font-size: 12.5px; }
+  .widget-fields[data-count="4"] .widget-field { padding: 0 3px; }
+  .widget-fields[data-count="4"] .widget-value { font-size: 11px; }
+}
 
 /* полосочка статуса: тонкая, во всю ширину виджета (загрузка CPU, заполненность диска) */
 .widget-bar {
