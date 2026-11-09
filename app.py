@@ -22,6 +22,30 @@ from hp.layout import build_page, host_is_local
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CONFIG = os.path.join(HERE, "config", "homepage.toml")
+ENV_FILE = os.path.join(HERE, "config", ".env")
+
+
+def load_env_file(path: str = ENV_FILE) -> None:
+    """Секреты для ${VAR} из config/.env — файла, которого нет в git.
+
+    Строки вида KEY=VALUE; пустые и начинающиеся с # пропускаются, кавычки
+    по краям значения снимаются. Уже заданное окружение главнее файла.
+    """
+    if not os.path.isfile(path):
+        return
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            value = value.strip()
+            if len(value) > 1 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            os.environ.setdefault(key.strip(), value)
+
+
+load_env_file()
 
 app = Flask(__name__)
 app.config["TEMPLATES_AUTO_RELOAD"] = True

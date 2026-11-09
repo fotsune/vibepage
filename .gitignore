@@ -7,3 +7,4 @@ __pycache__/
 _screens/
 .icon-cache/
 static/_probe.html
+config/.env
