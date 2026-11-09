@@ -638,3 +638,117 @@ a { color: inherit; text-decoration: none; }
 
 /* шапку выключили — контенту больше воздуха сверху */
 body.no-header .board { padding-top: clamp(22px, 2.8vw, 36px); }
+
+/* --------------------------------------------------------------- виджеты */
+
+/* точка статуса ping — в правом краю строки карточки */
+.card-ping {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+}
+
+.ping-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--comment);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35) inset;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card-ping.state-ok .ping-dot {
+  background: var(--green);
+  box-shadow: 0 0 8px -1px color-mix(in srgb, var(--green) 75%, transparent);
+}
+
+.card-ping.state-slow .ping-dot {
+  background: var(--yellow);
+  box-shadow: 0 0 8px -1px color-mix(in srgb, var(--yellow) 70%, transparent);
+}
+
+.card-ping.state-down .ping-dot {
+  background: var(--red);
+  box-shadow: 0 0 8px -1px color-mix(in srgb, var(--red) 70%, transparent);
+}
+
+/* сервер ещё не ответил: пульсация, чтобы не врать зелёным */
+.card-ping.state-unknown .ping-dot { animation: ping-wait 1.6s ease-in-out infinite; }
+
+@keyframes ping-wait {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.9; }
+}
+
+/* живое состояние внутри карточки: до трёх разграниченных полей */
+.card-with-widget .card-link { border-radius: var(--radius) var(--radius) 0 0; }
+
+.card-widget {
+  padding: 8px 12px 9px;
+  border-top: 1px solid var(--line-soft);
+  border-top-color: color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  border-radius: 0 0 var(--radius) var(--radius);
+  transition: opacity 0.2s ease;
+}
+
+.widget-fields {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: auto;      /* по ширине подписи: «остановлено» не режется */
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.widget-field {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+  padding-left: 8px;
+  border-left: 1px solid var(--line-soft);
+}
+
+.widget-field:first-child { padding-left: 0; border-left: 0; }
+
+.widget-value {
+  font: 600 15px/1.15 var(--mono);
+  color: var(--fg-soft);
+  letter-spacing: 0.2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.widget-value.tone-good { color: var(--green); }
+.widget-value.tone-bad { color: var(--red); }
+.widget-value.tone-warn { color: var(--yellow); }
+.widget-value.tone-idle { color: var(--fg-soft); }
+
+.widget-label {
+  font-size: 9.5px;
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.widget-error {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+/* данные не обновились — гасим, но не прячем: старые цифры лучше пустоты */
+.card-widget[data-stale="1"] .widget-value { opacity: 0.45; }
+body.live-stale .ping-dot { opacity: 0.5; }
+
+@media (prefers-reduced-motion: reduce) {
+  .card-ping.state-unknown .ping-dot { animation: none; opacity: 0.6; }
+}

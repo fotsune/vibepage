@@ -72,6 +72,7 @@
   </div>
   {% endif %}
 
+  <script id="live-state" type="application/json">{{ page.state|tojson }}</script>
   <main class="board" style="--cols: {{ page.cols }}; --mobile-cols: {{ page.mobile_cols }};">
     {% for column in page.columns %}
     <div class="column">
@@ -85,7 +86,7 @@
         </h2>
         <div class="cards">
           {% for service in group.services %}
-          <article class="card {% if service.url_alt %}card-with-alt{% endif %}" data-search="{{ (service.name ~ ' ' ~ service.desc ~ ' ' ~ group.name)|lower }}" style="--i: {{ loop.index0 }}">
+          <article class="card {% if service.url_alt %}card-with-alt{% endif %}{% if service.widget %} card-with-widget{% endif %}" data-search="{{ (service.name ~ ' ' ~ service.desc ~ ' ' ~ group.name)|lower }}" data-key="{{ service.key }}" style="--i: {{ loop.index0 }}">
             <a class="card-link" href="{{ service.url }}"
                data-main="{{ service.href_main }}" data-alt="{{ service.href_alt }}"
                {% if service.new_page %}target="_blank" rel="noopener noreferrer"{% endif %}>
@@ -98,6 +99,12 @@
                 <span class="card-name" title="{{ service.name }}">{{ service.name }}</span>
                 {% if service.desc %}<span class="card-desc" title="{{ service.desc }}">{{ service.desc }}</span>{% endif %}
               </span>
+              {% if service.ping %}
+              <span class="card-ping state-{{ service.ping.state }}" data-ping-state="{{ service.ping.state }}"
+                    title="ping {{ service.ping.target }}: {{ service.ping.state }}{% if service.ping.ms %} ({{ service.ping.ms }} мс){% endif %}">
+                <span class="ping-dot" aria-hidden="true"></span>
+              </span>
+              {% endif %}
             </a>
             {% if service.url_alt %}
             <a class="card-alt" href="{{ service.url_alt }}" title="{{ service.url_alt_title }}"
@@ -106,6 +113,19 @@
                {% if service.new_page %}target="_blank" rel="noopener noreferrer"{% endif %}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 5.5h9v9"/><path d="M18.5 5.5 8 16"/><path d="M6 9.5H4.8a.8.8 0 0 0-.8.8v8.9a.8.8 0 0 0 .8.8h8.9a.8.8 0 0 0 .8-.8V19"/></svg>
             </a>
+            {% endif %}
+            {% if service.widget %}
+            <div class="card-widget" data-widget="{{ service.widget.name }}"{% if not service.widget.ok %} data-stale="1"{% endif %}>
+              <div class="widget-fields">
+                {% for field in service.widget.fields %}
+                <div class="widget-field" data-field="{{ field.key }}">
+                  <span class="widget-value tone-{{ field.tone }}">{{ field.value if field.value is not none else "—" }}</span>
+                  <span class="widget-label" title="{{ field.label }}">{{ field.label }}</span>
+                </div>
+                {% endfor %}
+              </div>
+              <p class="widget-error"{% if service.widget.ok %} hidden{% endif %}>{{ service.widget.error or "нет данных" }}</p>
+            </div>
             {% endif %}
           </article>
           {% endfor %}

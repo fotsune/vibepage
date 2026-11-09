@@ -29,10 +29,12 @@ desc = "Мониторинг доступности"
 group = "Group1"
 
 [service:Portainer]
-link = "https://portainer.example.com"
+link = "https://portainer.example.com:9443"
 icon = "docker.svg"
 desc = "Контейнеры и стеки"
 group = "Group1"
+widget = "portainer"                    # счётчики контейнеров в карточке
+ping = "portainer.example.com:9443"     # точка справа: сервер проверяет TCP
 
 # ─── Group2: дом ──────────────────────────────────────────────────
 

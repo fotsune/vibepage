@@ -17,6 +17,7 @@ import ipaddress
 from types import SimpleNamespace
 from urllib.parse import quote, urlsplit
 
+from . import widgets as widget_lib
 from .colors import auto as auto_color
 from .config import Group, Service, Site, group_key
 
@@ -122,13 +123,55 @@ def _initial(name: str) -> str:
     return "?"
 
 
-def _build_service(service: Service, system, prefer_alt: bool, resolve_icon, accent: str) -> dict:
+def _widget_view(service: Service, site: Site) -> dict | None:
+    """Скелет виджета: поля с подписями и, если кэш уже тёплый, значения."""
+    if not service.widget:
+        return None
+    widget = site.widgets.get(group_key(service.widget))
+    if widget is None:
+        return {"name": service.widget, "title": service.widget, "fields": [], "ok": False,
+                "error": "виджет не объявлен", "at": 0}
+    spec_fields = widget_lib.fields_for(widget)
+    state = widget_lib.peek_widget(widget)
+    values = {}
+    tones = {}
+    if state and state.get("ok"):
+        for field in state.get("fields") or []:
+            values[field["key"]] = field.get("value")
+            tones[field["key"]] = field.get("tone")
+    return {
+        "name": widget.name,
+        "title": widget_lib.title_for(widget),
+        "kind": widget.type,
+        "fields": [
+            {"key": field["key"], "label": field["label"],
+             "value": values.get(field["key"]), "tone": tones.get(field["key"], "idle")}
+            for field in spec_fields
+        ],
+        "ok": bool(state and state.get("ok")),
+        "error": (state or {}).get("error", "") if state else "",
+        "at": (state or {}).get("at", 0),
+    }
+
+
+def _ping_view(service: Service) -> dict | None:
+    """Точка статуса: хозяйство сервера, клиент только перекрашивает."""
+    if not service.ping:
+        return None
+    state = widget_lib.peek_ping(service.ping, float(service.ping_timeout or 2.0))
+    return {"target": service.ping, "state": (state or {}).get("state", "unknown"),
+            "ms": (state or {}).get("ms"), "at": (state or {}).get("at", 0)}
+
+
+def _build_service(service: Service, system, prefer_alt: bool, resolve_icon, accent: str,
+                   site: Site | None = None, identity: str = "") -> dict:
     """One card: the URL it opens now, the other one, and both tints."""
     primary, secondary = _card_urls(service, prefer_alt)
     new_page = system.open_in_new_page if service.new_page is None else service.new_page
     main = service.link or service.alt                     # "основная" = link
     alt = service.alt if service.alt and service.alt != service.link else None
     return {
+        "key": identity,
         "name": service.name,
         "desc": service.desc or "",
         "url": primary or "#",
@@ -145,6 +188,8 @@ def _build_service(service: Service, system, prefer_alt: bool, resolve_icon, acc
         "initial": _initial(service.name),
         "new_page": bool(new_page),
         "priority": service.priority,
+        "widget": _widget_view(service, site) if site is not None else None,
+        "ping": _ping_view(service) if site is not None else None,
     }
 
 
@@ -213,7 +258,8 @@ def build_page(site: Site, is_local: bool = True, resolve_icon=None) -> dict:
 
     for flow, key in enumerate(ordered_keys):
         group = groups[key]
-        cards = [_build_service(service, site.system, prefer_alt, resolve_icon, accent_of[roots[key]])
+        cards = [_build_service(service, site.system, prefer_alt, resolve_icon, accent_of[roots[key]], site,
+                                widget_lib.card_identity(service, group.name))
                  for service in sorted(services_by_group.get(key, []), key=sort_key)]
         root = groups[roots[key]]
         columns[column_of[key] - 1].append({
@@ -226,8 +272,11 @@ def build_page(site: Site, is_local: bool = True, resolve_icon=None) -> dict:
             "services": cards,
         })
 
+    live = widget_lib.snapshot(site, online=False)   # только кэш: первый рендер не ждёт сеть
     return {
         "title": site.system.title,
+        "poll": site.system.poll,
+        "state": live,
         "cols": cols,
         "mobile_cols": max(1, site.system.mobile_cols or 1),
         "columns": [column for column in columns],

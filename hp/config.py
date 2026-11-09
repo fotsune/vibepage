@@ -8,6 +8,7 @@ Sections
 --------
 ``[system]``            global settings: title, columns, paths
 ``[header]``            the top bar: clock, search, icons, link mode
+``[widget:Name]``       a live widget (portainer, …) a card can show
 ``[service:Name]``      one service card
 ``[group:Name]``        one group of services
 
@@ -30,10 +31,10 @@ SECTION_RE = re.compile(r"^\[\s*([A-Za-z_][\w-]*)\s*(?::\s*(.*?))?\s*\]$")
 KEY_RE = re.compile(r"^([A-Za-z_][\w-]*)\s*=\s*(.*)$")
 INT_RE = re.compile(r"[+-]?\d+")
 
-SERVICE_KEYS = {"link", "alt", "name", "icon", "icon_link", "icon_color",
+SERVICE_KEYS = {"link", "alt", "name", "icon", "icon_link", "icon_color", "widget", "ping", "ping_timeout",
                 "desc", "group", "priority", "new_page"}
 GROUP_KEYS = {"name", "priority", "link", "color"}
-SYSTEM_KEYS = {"title", "icon_path", "config_path", "cols", "mobile_cols", "open_in_new_page"}
+SYSTEM_KEYS = {"title", "icon_path", "config_path", "cols", "mobile_cols", "open_in_new_page", "poll"}
 HEADER_KEYS = {"show", "enabled", "header", "time", "time_format", "icon", "favicon", "search",
                "link_mode", "main_alt", "desc", "tagline", "subtitle"}
 LINK_MODES = {"auto": "auto", "main": "main", "link": "main", "primary": "main", "external": "main",
@@ -54,6 +55,7 @@ class System:
     cols: int = 3
     mobile_cols: int = 1
     open_in_new_page: bool = False
+    poll: int = 10                   # раз в сколько секунд клиент спрашивает состояние
 
 
 @dataclass
@@ -68,6 +70,16 @@ class Header:
     favicon: str | None = None       # favicon, путь относительно system.icon_path
     link_mode: str = "auto"          # auto | main | alt
     desc: str = "self-hosted dashboard"   # подпись под заголовком; "" — не показывать
+
+
+@dataclass
+class Widget:
+    """``[widget:Name]`` — живое состояние карточки, за которым ходит сервер."""
+
+    name: str
+    type: str = ""
+    options: dict = field(default_factory=dict)
+    source: str | None = None
 
 
 @dataclass
@@ -92,6 +104,9 @@ class Service:
     desc: str | None = None
     priority: int | None = None
     new_page: bool | None = None
+    widget: str | None = None         # имя секции [widget:…]
+    ping: str | None = None           # host, host:port или URL
+    ping_timeout: float | None = None
     source: str | None = None
     group_key: str = ""
 
@@ -103,6 +118,7 @@ class Site:
     system: System = field(default_factory=System)
     header: Header = field(default_factory=Header)
     groups: dict[str, Group] = field(default_factory=dict)   # keyed by casefolded name
+    widgets: dict[str, Widget] = field(default_factory=dict)  # keyed by casefolded name
     services: list[Service] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -115,6 +131,14 @@ class Site:
             found = Group(name=name or DEFAULT_GROUP, declared=False)
             self.groups[key] = found
         return found
+
+
+ENV_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
+
+
+def _expand(text: str) -> str:
+    """``${PORTAINER_KEY}`` (и ``${VAR:-по умолчанию}``) → значение из окружения."""
+    return ENV_RE.sub(lambda match: os.environ.get(match.group(1), match.group(2) or ""), text)
 
 
 def group_key(name: str | None) -> str:
@@ -189,6 +213,26 @@ def parse_value(raw: str):
     return bare
 
 
+def _strip_comment(text: str) -> str:
+    """``env = 1   # пояснение`` → ``env = 1``; ``color = #8be9fd`` не трогаем."""
+    quote: str | None = None
+    for index, char in enumerate(text):
+        if quote:
+            if char == quote:
+                quote = None
+            continue
+        if char in "\"'":
+            quote = char
+        elif char == "#" and index and text[index - 1] in " \t":
+            head = text[:index]
+            if "=" in head:
+                if head.split("=", 1)[1].strip():
+                    return head.rstrip()
+            elif head.strip():
+                return head.rstrip()
+    return text
+
+
 def parse_file(path: str) -> tuple[list[dict], list[str]]:
     """Read one config file into raw sections plus a list of problems."""
     sections: list[dict] = []
@@ -203,6 +247,7 @@ def parse_file(path: str) -> tuple[list[dict], list[str]]:
         text = line.strip()
         if not text or text.startswith("#"):
             continue
+        text = _strip_comment(text)
         if text.startswith("["):
             match = SECTION_RE.match(text)
             if not match:
@@ -211,7 +256,7 @@ def parse_file(path: str) -> tuple[list[dict], list[str]]:
                 continue
             kind = match.group(1).lower()
             name = (match.group(2) or "").strip().strip("'\"")
-            if kind not in ("system", "header", "service", "group"):
+            if kind not in ("system", "header", "widget", "service", "group"):
                 errors.append(f"{os.path.basename(path)}:{lineno}: неизвестная секция [{kind}]")
                 current = None
                 continue
@@ -248,8 +293,7 @@ def _as_str(value) -> str | None:
         return None
     if isinstance(value, bool):
         return "true" if value else "false"
-    text = str(value).strip()
-    return text or None
+    return _expand(str(value).strip()) or None
 
 
 def _as_int(value, where: str, key: str, warnings: list[str], default=None, minimum=None):
@@ -283,6 +327,16 @@ def _as_bool(value, where: str, key: str, warnings: list[str], default=None):
         return False
     warnings.append(f"{where}: {key} должно быть true/false, получено {value!r}")
     return default
+
+
+def _as_float(value, where: str, key: str, warnings: list[str], default=None):
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        warnings.append(f"{where}: {key} должен быть числом, получено {value!r}")
+        return default
 
 
 def _resolve_path(value: str, base_dir: str) -> str:
@@ -398,6 +452,8 @@ def _apply_system(site: Site, values: dict, source: str, where: str, warnings: l
             system.cols = _as_int(value, where, "cols", warnings, system.cols, minimum=1)
         elif key == "mobile_cols":
             system.mobile_cols = _as_int(value, where, "mobile_cols", warnings, system.mobile_cols, minimum=1)
+        elif key == "poll":
+            system.poll = _as_int(value, where, "poll", warnings, system.poll, minimum=3)
         elif key == "open_in_new_page":
             system.open_in_new_page = _as_bool(
                 value, where, "open_in_new_page", warnings, system.open_in_new_page
@@ -429,6 +485,16 @@ def _make_group(section: dict, where: str, warnings: list[str]) -> Group:
     )
 
 
+def _make_widget(section: dict, where: str, warnings: list[str]) -> Widget:
+    values = dict(section["values"])
+    raw_type = values.pop("type", values.pop("kind", None))
+    kind = (_as_str(raw_type) or "").strip().lower()
+    options: dict = {}
+    for key, value in values.items():
+        options[key] = _expand(value) if isinstance(value, str) else value
+    return Widget(name=section["name"], type=kind, options=options, source=section["source"])
+
+
 def _make_service(section: dict, where: str, warnings: list[str]) -> Service:
     values = section["values"]
     for key in values:
@@ -448,6 +514,9 @@ def _make_service(section: dict, where: str, warnings: list[str]) -> Service:
         icon_link=_as_str(values.get("icon_link")),
         icon_color=_color_of(values.get("icon_color"), where, "icon_color", warnings),
         desc=_as_str(values.get("desc")),
+        widget=_as_str(values.get("widget")),
+        ping=_as_str(values.get("ping")),
+        ping_timeout=_as_float(values.get("ping_timeout"), where, "ping_timeout", warnings),
         priority=_as_int(values.get("priority"), where, "priority", warnings),
         new_page=_as_bool(values.get("new_page"), where, "new_page", warnings),
         source=section["source"],
@@ -481,6 +550,8 @@ def load(main_path: str = "config/homepage.toml") -> Site:
         where = f"{os.path.basename(section['source'])}:{section['line']}"
         if section["kind"] == "system":
             _apply_system(site, section["values"], section["source"], where, site.warnings)
+        elif section["kind"] == "widget":
+            site.widgets[group_key(section["name"])] = _make_widget(section, where, site.warnings)
         elif section["kind"] == "header":
             _apply_header(site.header, section["values"], where, site.warnings)
         elif section["kind"] == "group":
@@ -513,6 +584,18 @@ def load(main_path: str = "config/homepage.toml") -> Site:
         # groups that only exist by being mentioned inside services
         if key not in site.groups:
             site.groups[key] = Group(name=service.group, declared=False)
+
+    from . import widgets as widget_lib   # поздний импорт: widgets не знает про config
+
+    for widget in site.widgets.values():
+        site.warnings += widget_lib.validate(widget)
+    for service in site.services:
+        if service.widget and group_key(service.widget) not in site.widgets:
+            known = ", ".join(sorted(widget.name for widget in site.widgets.values())) or "ни одного"
+            site.warnings.append(
+                f"сервис {service.name!r} ссылается на виджет {service.widget!r}, "
+                f"а объявлены только: {known}"
+            )
 
     for group in site.groups.values():
         if group.link and group_key(group.link) not in site.groups:

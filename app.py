@@ -9,12 +9,14 @@ edit a file, press F5.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import traceback
 
 from flask import Flask, abort, make_response, render_template, request, send_file
 
 from hp import icons as icon_lib
+from hp import widgets as widget_lib
 from hp.config import load
 from hp.layout import build_page, host_is_local
 
@@ -52,6 +54,25 @@ def index():
             page={"title": "Homepage"},
         )
     response = make_response(html)
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
+
+
+@app.get("/api/state")
+def api_state():
+    """Состояние карточек для поллинга: ping и виджеты, из кэша где можно."""
+    path = config_path()
+    try:
+        site = load(path)
+    except Exception as exc:  # noqa: BLE001 — клиент получит ошибку, а не 500
+        return json_response({"cards": {}, "poll": 10, "error": str(exc)})
+    online = request.args.get("cached") not in ("1", "true", "yes")
+    return json_response(widget_lib.snapshot(site, online=online))
+
+
+def json_response(payload: dict):
+    response = make_response(json.dumps(payload, ensure_ascii=False))
+    response.headers["Content-Type"] = "application/json; charset=utf-8"
     response.headers["Cache-Control"] = "no-store, max-age=0"
     return response
 

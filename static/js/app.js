@@ -120,4 +120,102 @@
       img.replaceWith(span);
     });
   });
+
+  /* ------------------------------------------------ живые карточки (ping) */
+  /* Состояние всё считает сервер: здесь только раз в system.poll секунд
+     спросить /api/state и перекрасить уже нарисованное. */
+  var liveNode = document.getElementById("live-state");
+  if (liveNode) {
+    var live = {};
+    try {
+      live = JSON.parse(liveNode.textContent || "{}") || {};
+    } catch (error) {
+      live = {};
+    }
+
+    var pollMs = Math.max(3, Number(live.poll) || 10) * 1000;
+    var timer = null;
+    var busy = false;
+    var failures = 0;
+
+    function paintPing(card, ping) {
+      var node = card.querySelector(".card-ping");
+      if (!node) return;
+      var state = ping.state || "unknown";
+      ["ok", "slow", "down", "unknown"].forEach(function (name) {
+        node.classList.toggle("state-" + name, name === state);
+      });
+      node.title = "ping " + ping.target + ": " + state +
+        (ping.ms === null || ping.ms === undefined ? "" : " (" + ping.ms + " мс)");
+    }
+
+    function paintWidget(card, widget) {
+      var box = card.querySelector(".card-widget");
+      if (!box) return;
+      var error = box.querySelector(".widget-error");
+      if (!widget.ok) {
+        box.setAttribute("data-stale", "1");
+        if (error) {
+          error.textContent = widget.error || "нет данных";
+          error.hidden = false;
+        }
+        return;
+      }
+      box.removeAttribute("data-stale");
+      if (error) error.hidden = true;
+      (widget.fields || []).forEach(function (field) {
+        var cell = box.querySelector('.widget-field[data-field="' + field.key + '"]');
+        if (!cell) return;
+        var value = cell.querySelector(".widget-value");
+        if (!value) return;
+        value.textContent = field.value === null || field.value === undefined ? "—" : field.value;
+        value.className = "widget-value tone-" + (field.tone || "idle");
+      });
+    }
+
+    function applyState(payload) {
+      var states = (payload && payload.cards) || {};
+      Array.prototype.forEach.call(document.querySelectorAll(".card[data-key]"), function (card) {
+        var state = states[card.dataset.key];
+        if (!state) return;
+        if (state.ping) paintPing(card, state.ping);
+        if (state.widget) paintWidget(card, state.widget);
+      });
+    }
+
+    function refresh() {
+      if (busy || document.hidden) return;
+      busy = true;
+      fetch("/api/state", { cache: "no-store", headers: { Accept: "application/json" } })
+        .then(function (response) {
+          if (!response.ok) throw new Error("HTTP " + response.status);
+          return response.json();
+        })
+        .then(function (payload) {
+          failures = 0;
+          document.body.classList.remove("live-stale");
+          applyState(payload);
+        })
+        .catch(function () {
+          /* сеть пропала: последние цифры остаются на месте, но гаснут */
+          failures += 1;
+          if (failures >= 2) document.body.classList.add("live-stale");
+        })
+        .then(function () {
+          busy = false;
+        });
+    }
+
+    function schedule() {
+      if (timer) clearInterval(timer);
+      timer = document.hidden ? null : setInterval(refresh, pollMs);
+    }
+
+    applyState(live);
+    schedule();
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) refresh();
+      schedule();
+    });
+  }
 })();
