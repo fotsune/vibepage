@@ -153,17 +153,7 @@
     function paintWidget(card, widget) {
       var box = card.querySelector(".card-widget");
       if (!box) return;
-      var error = box.querySelector(".widget-error");
-      if (!widget.ok) {
-        box.setAttribute("data-stale", "1");
-        if (error) {
-          error.textContent = widget.error || "нет данных";
-          error.hidden = false;
-        }
-        return;
-      }
-      box.removeAttribute("data-stale");
-      if (error) error.hidden = true;
+      // поля перекрашиваем всегда: на ошибке сервер присылает кресты вместо старых цифр
       (widget.fields || []).forEach(function (field) {
         var cell = box.querySelector('.widget-field[data-field="' + field.key + '"]');
         if (!cell) return;
@@ -172,6 +162,13 @@
         value.textContent = field.value === null || field.value === undefined ? "—" : field.value;
         value.className = "widget-value tone-" + (field.tone || "idle");
       });
+      if (widget.ok) {
+        box.dataset.phase = "ok";
+        box.removeAttribute("title");
+      } else if (widget.error) {
+        box.dataset.phase = "error";
+        box.title = widget.error;   // попап с причиной, без адреса
+      }
     }
 
     function applyState(payload) {

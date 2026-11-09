@@ -270,7 +270,7 @@ class PageAndRouteTests(WidgetTestCase):
             widgets.snapshot(load(self.path), online=True)
             body = self.client.get("/").get_data(as_text=True)
         self.assertIn('"state": "slow"', body)
-        self.assertNotIn("data-stale", body)
+        self.assertNotIn('data-phase="error"', body)
 
 
 # --------------------------------------------------------------------------- #
@@ -507,3 +507,50 @@ class TypedWidgetTests(WidgetTestCase):
                                {"/v1/metrics": "go_goroutines 4\n"})
         self.assertFalse(state["ok"])
         self.assertIn("watchtower_", state["error"])
+
+
+class FailureShapeTests(WidgetTestCase):
+    """Ошибка виджета: кресты вместо цифр, причина без адреса и кодов ОС."""
+
+    def _refused(self):
+        from urllib.error import URLError
+
+        def opener(request, timeout=None, context=None):
+            raise URLError(ConnectionRefusedError(10061, "No connection could be made"))
+        return opener
+
+    def test_reason_is_short_and_hides_the_address(self):
+        with mock.patch.object(widgets, "urlopen", self._refused()):
+            site = load(self.path)
+            state = widgets.run_widget(site.widgets["box"])
+        self.assertFalse(state["ok"])
+        self.assertEqual(state["label"], "нет связи")
+        self.assertIn("порт закрыт", state["error"])
+        self.assertNotIn("192.0.2.10", state["error"])
+        self.assertNotIn("9000", state["error"])
+        self.assertNotIn("WinError", state["error"])
+        self.assertLess(len(state["error"]), 40)
+
+    def test_failure_replaces_numbers_with_crosses(self):
+        good = [{"State": "running"}, {"State": "exited"}]
+        site = load(self.path)
+        with mock.patch.object(widgets, "urlopen", fake_urlopen(good)):
+            self.assertTrue(widgets.run_widget(site.widgets["box"])["ok"])
+        with mock.patch.object(widgets, "urlopen", self._refused()):
+            state = widgets.run_widget(site.widgets["box"])
+        self.assertEqual([field["value"] for field in state["fields"]],
+                         [widgets.CROSS] * 3)
+        self.assertEqual({field["tone"] for field in state["fields"]}, {"down"})
+        self.assertEqual([field["label"] for field in state["fields"]],
+                         ["запущено", "остановлено", "всего"])
+
+    def test_auth_failure_says_so(self):
+        from urllib.error import HTTPError
+
+        def opener(request, timeout=None, context=None):
+            raise HTTPError(request.full_url, 401, "Unauthorized", None, None)
+        with mock.patch.object(widgets, "urlopen", opener):
+            site = load(self.path)
+            state = widgets.run_widget(site.widgets["box"])
+        self.assertEqual(state["label"], "нет доступа")
+        self.assertIn("401", state["error"])

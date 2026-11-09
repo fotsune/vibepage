@@ -133,6 +133,7 @@ def _widget_view(service: Service, site: Site) -> dict | None:
                 "error": "виджет не объявлен", "at": 0}
     spec_fields = widget_lib.fields_for(widget)
     state = widget_lib.peek_widget(widget)
+    failed = bool(state) and not state.get("ok")   # ошибка уже известна — кресты, не старые цифры
     values = {}
     tones = {}
     if state and state.get("ok"):
@@ -145,10 +146,12 @@ def _widget_view(service: Service, site: Site) -> dict | None:
         "kind": widget.type,
         "fields": [
             {"key": field["key"], "label": field["label"],
-             "value": values.get(field["key"]), "tone": tones.get(field["key"], "idle")}
+             "value": widget_lib.CROSS if failed else values.get(field["key"]),
+             "tone": "down" if failed else tones.get(field["key"], "idle")}
             for field in spec_fields
         ],
         "ok": bool(state and state.get("ok")),
+        "phase": "error" if failed else ("ok" if state else "cold"),
         "error": (state or {}).get("error", "") if state else "",
         "at": (state or {}).get("at", 0),
     }

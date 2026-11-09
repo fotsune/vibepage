@@ -42,8 +42,56 @@ MAX_FIELDS = 3            # сколько полей влезает в карт
 MC_DEFAULT_PORT = 25565
 
 
+CROSS = "✕"                # значение поля, когда данных нет
+
+
 class WidgetFailure(Exception):
-    """Причина, которую не стыдно показать прямо в карточке."""
+    """Причина, которую не стыдно показать прямо в карточке.
+
+    ``label`` — два слова для карточки, ``str(error)`` — подсказка при
+    наведении. Ни адресов, ни кодов ОС: клиенту незачем знать, куда именно мы
+    стучимся (так же, как у ping).
+    """
+
+    def __init__(self, detail: str, label: str = "ошибка"):
+        super().__init__(detail)
+        self.label = label
+
+
+_ADDRESS = re.compile(r"(?:https?://)?(?:\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-fA-F:]+\])(?::\d+)?")
+_WINERR = re.compile(r"\[?WinError\s*\d+\]?|\[?Errno\s*-?\d+\]?")
+
+# коды отказов: WinError и errno в одном месте
+_REFUSED = (10061, 111)          # порт закрыт
+_TIMEOUT = (10060, 110, 10035)   # никто не ответил
+_UNREACH = (10065, 113, 101)     # узел недоступен
+_DNS = (11001, 11004, -2, -3, 8)
+
+
+def _clean(text: str) -> str:
+    """Причина без адреса и кодов ОС."""
+    text = _WINERR.sub("", str(text or ""))
+    text = _ADDRESS.sub("адрес", text)
+    return " ".join(text.split()).strip(" :.,")
+
+
+def _reason_text(reason) -> str:
+    """Отказ соединения коротко и по-русски: без адреса, кода и английского хвоста."""
+    code = getattr(reason, "errno", None)
+    if code is None and isinstance(reason, int):
+        code = reason
+    if code in _REFUSED:
+        return "порт закрыт"
+    if code in _TIMEOUT:
+        return "нет ответа"
+    if code in _UNREACH:
+        return "узел недоступен"
+    if code in _DNS:
+        return "имя не найдено"
+    text = _clean(reason)
+    if not text or len(text) > 40 or not re.search(r"[а-яё]", text, re.I):
+        return "соединение не установлено"   # английские хвосты ОС не переводим
+    return text
 
 
 def _truthy(value) -> bool:
@@ -59,16 +107,17 @@ def _request(url: str, headers: dict | None = None, data: bytes | None = None,
     """Один GET/POST: любая беда — WidgetFailure с человеческой причиной."""
     request = Request(url, headers=headers or {}, data=data)
     context = ssl._create_unverified_context() if insecure else None
-    host = urlsplit(url).netloc or url
+    host = urlsplit(url).netloc or url   # только для логов, в карточку не идёт
     try:
         with urlopen(request, timeout=timeout, context=context) as response:
             return response.read(4_000_000)
     except HTTPError as error:
-        raise WidgetFailure(f"{name} ответил {error.code}") from error
+        label = "нет доступа" if error.code in (401, 403) else "ошибка API"
+        raise WidgetFailure(f"{name}: HTTP {error.code}", label) from error
     except URLError as error:
-        raise WidgetFailure(f"нет связи с {host}: {error.reason}") from error
+        raise WidgetFailure(f"нет связи: {_reason_text(error.reason)}", "нет связи") from error
     except (socket.timeout, TimeoutError) as error:
-        raise WidgetFailure(f"{name} не ответил вовремя") from error
+        raise WidgetFailure("нет связи: нет ответа", "нет связи") from error
 
 
 def _json(raw: bytes, name: str = "Сервис"):
@@ -314,7 +363,7 @@ def minecraft_status(target: str, timeout: float = DEFAULT_TIMEOUT) -> dict:
                 if len(raw) >= 6 and _packet_complete(raw):
                     break
     except (OSError, ValueError) as error:
-        raise WidgetFailure(f"Minecraft не ответил: {error}") from error
+        raise WidgetFailure(f"Minecraft: {_reason_text(error)}", "нет связи") from error
     # тело пакета: varint длина, varint id, varint длина JSON, JSON
     length, pos = _take_varint(raw, 0)
     packet = raw[pos:pos + length]
@@ -620,24 +669,37 @@ def _field_problems(widget, spec) -> list[str]:
     return problems
 
 
+def _crossed(widget, spec) -> list[dict]:
+    """Поля с крестами: старые цифры не выдаём за свежие."""
+    labels = labels_for(spec)
+    return [{"key": key, "label": labels[key], "value": CROSS, "tone": "down"}
+            for key in field_keys(widget, spec)]
+
+
+def _failed(widget, spec, stamp: float, detail: str, label: str = "ошибка") -> dict:
+    """Ошибка — полноправное состояние карточки: кресты, короткий ярлык, причина."""
+    return {"ok": False, "type": widget.type, "at": stamp, "label": label,
+            "error": _clean(detail) or label,
+            "fields": _crossed(widget, spec) if spec is not None else []}
+
+
 def run_widget(widget) -> dict:
     """Один поход в чужой API. Никогда не бросает: ошибка — это тоже состояние."""
     spec = type_spec(widget.type)
     stamp = time.time()
     if spec is None:
-        return {"ok": False, "type": widget.type, "error": f"неизвестный тип {widget.type!r}", "at": stamp}
+        return _failed(widget, None, stamp, f"неизвестный тип {widget.type}", "нет виджета")
     missing = [key for key in spec.REQUIRED if not widget.options.get(key)]
     if missing:
-        return {"ok": False, "type": widget.type, "fields": [], "at": stamp,
-                "error": "не хватает " + ", ".join(missing)}
+        return _failed(widget, spec, stamp, "не хватает " + ", ".join(missing), "не настроен")
     try:
         values = spec.fetch(widget.options)
     except WidgetFailure as error:
-        return {"ok": False, "type": widget.type, "at": stamp, "error": str(error)}
+        return _failed(widget, spec, stamp, str(error), getattr(error, "label", "ошибка"))
     except Exception as error:  # noqa: BLE001 — виджет не имеет права ронять страницу
-        return {"ok": False, "type": widget.type, "at": stamp, "error": f"{type(error).__name__}: {error}"}
+        return _failed(widget, spec, stamp, f"{type(error).__name__}: {error}")
     if not isinstance(values, dict):
-        return {"ok": False, "type": widget.type, "at": stamp, "error": "виджет вернул не словарь"}
+        return _failed(widget, spec, stamp, "виджет вернул не словарь")
     labels = labels_for(spec)
     fields = []
     for key in field_keys(widget, spec):

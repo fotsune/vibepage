@@ -115,7 +115,7 @@
             </a>
             {% endif %}
             {% if service.widget %}
-            <div class="card-widget" data-widget="{{ service.widget.name }}"{% if not service.widget.ok %} data-stale="1"{% endif %}>
+            <div class="card-widget" data-widget="{{ service.widget.name }}" data-phase="{{ service.widget.phase }}"{% if service.widget.phase == "error" and service.widget.error %} title="{{ service.widget.error }}"{% endif %}>
               <div class="widget-fields">
                 {% for field in service.widget.fields %}
                 <div class="widget-field" data-field="{{ field.key }}">
@@ -124,7 +124,6 @@
                 </div>
                 {% endfor %}
               </div>
-              <p class="widget-error"{% if service.widget.ok %} hidden{% endif %}>{{ service.widget.error or "нет данных" }}</p>
             </div>
             {% endif %}
           </article>

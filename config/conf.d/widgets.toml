@@ -110,7 +110,7 @@ ping = "192.168.0.112:59994"
 type = "uptimekuma"
 url = "http://192.168.0.112:59994"
 slug = "statuspageslug"
-fields = ["up", "down", "uptime"]
+fields = ["up", "down", "uptime", "incident"]
 
 # ─── Your Spotify: что слушал ───────────────────────────────────
 
