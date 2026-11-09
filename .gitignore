@@ -8,3 +8,4 @@ _screens/
 .icon-cache/
 static/_probe.html
 config/.env
+static/_probe_new.html

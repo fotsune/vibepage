@@ -17,8 +17,12 @@
 показывать и в каком порядке (не больше ``MAX_FIELDS``). Старая запись
 ``fields = ["total", "enabled"]`` понимается точно так же.
 
-Системные виджеты (``sysinfo``, ``disk``) несут ещё и полосочку статуса:
+Системные виджеты (``cpu``, ``ram``, ``disk``) несут ещё и полосочку статуса:
 ``Spec.bar()`` возвращает долю заполнения 0…1, её рисует страница.
+
+Любой тип можно показать с чужого хоста: ``host = "box:8080"`` и ``external = "disk"``
+означают «возьми у соседа виджет disk и нарисуй его здесь своими ``fields`` и единицами»
+— сосед отдаёт ``/api/widget?id=…`` (см. :func:`remote_payload`).
 """
 
 from __future__ import annotations
@@ -193,6 +197,12 @@ def _level(fraction: float) -> str:
     if fraction >= 0.7:
         return "warn"
     return "good"
+
+
+def canonical_type(kind: str | None) -> str:
+    """Имя типа без синонимов: sysinfo/system → cpu, memory → ram."""
+    key = (kind or "").strip().lower()
+    return ALIASES.get(key, key)
 
 
 def _bar(fraction, tone: str | None = None) -> dict | None:
@@ -636,17 +646,85 @@ def _psutil():
     return psutil
 
 
-_CPU_SAMPLED = False      # первый cpu_percent(interval=None) всегда возвращает 0
+# Загрузка CPU считается по своим замерам, а не через psutil.cpu_percent(interval=None):
+# тот помнит предыдущий замер в словаре по номеру потока, а snapshot опрашивает
+# карточки из свежего потока на каждый запрос. Первый же вызов в новом потоке
+# сравнивает время с самим собой — дельта в микросекунды, отсюда прыжки 0 % / 100 %.
+
+CPU_WINDOW = 3.0          # окно усреднения, секунды: короче — полоска дёргается
+CPU_KEEP = 30.0           # сколько секунд помним замеры
+CPU_MIN_GAP = 0.5         # два замера ближе этого — второй не нужен
+CPU_PRIME = 0.2           # первый замер за жизнь процесса ждёт столько
+
+_CpuSample = namedtuple("CpuSample", "at busy total")
+_CPU_SAMPLES: list = []
+_CPU_LOAD = 0.0
+_CPU_LOCK = threading.Lock()
+
+
+def forget_cpu_load() -> None:
+    """Забыть накопленные замеры: тестам и смене железа."""
+    global _CPU_LOAD
+    with _CPU_LOCK:
+        _CPU_SAMPLES.clear()
+        _CPU_LOAD = 0.0
+
+
+def _cpu_sample(module, at: float) -> _CpuSample:
+    """Счётчики процессора в секундах: занято и всего с момента загрузки."""
+    times = module.cpu_times()
+    fields = dict(times._asdict()) if hasattr(times, "_asdict") else dict(vars(times))
+    if not fields:      # не namedtuple и без __dict__: берём по именам счётчиков
+        fields = {name: getattr(times, name, 0) for name in (
+            "user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal", "guest", "guest_nice")}
+    total = sum(float(value) for value in fields.values() if isinstance(value, (int, float)))
+    # guest уже входит в user — второй раз не считаем; iowait — это не работа CPU
+    total -= float(fields.get("guest", 0) or 0) + float(fields.get("guest_nice", 0) or 0)
+    idle = float(fields.get("idle", 0) or 0) + float(fields.get("iowait", 0) or 0)
+    return _CpuSample(at=at, busy=max(0.0, total - idle), total=max(0.0, total))
+
+
+def _cpu_share(start, end) -> float | None:
+    """Доля занятого времени между двумя замерами: 0.42 — это 42 %."""
+    spent = end.total - start.total
+    if spent <= 0:
+        return None
+    return max(0.0, min(1.0, (end.busy - start.busy) / spent))
+
+
+def _cpu_load(module=None, window: float = CPU_WINDOW, prime: float = CPU_PRIME) -> float:
+    """Загрузка CPU в процентах — среднее за окно не короче ``window`` секунд.
+
+    Замеры копятся в одном месте на весь процесс, поэтому частота опроса и
+    поток, из которого спросили, на результат не влияют: чем реже спрашивают,
+    тем длиннее окно и спокойнее цифра.
+    """
+    global _CPU_LOAD
+    module = module or _psutil()
+    with _CPU_LOCK:
+        now = time.monotonic()
+        if _CPU_SAMPLES and now - _CPU_SAMPLES[-1].at < CPU_MIN_GAP:
+            return _CPU_LOAD                     # спросили слишком часто — прежний ответ
+        _CPU_SAMPLES.append(_cpu_sample(module, now))
+        if len(_CPU_SAMPLES) == 1 and prime > 0:
+            time.sleep(prime)                 # самый первый замер за жизнь процесса
+            _CPU_SAMPLES.append(_cpu_sample(module, time.monotonic()))
+        start = next((sample for sample in reversed(_CPU_SAMPLES[:-1])
+                      if time.monotonic() - sample.at >= window), None)
+        if start is None and len(_CPU_SAMPLES) > 1:
+            start = _CPU_SAMPLES[0]          # окно ещё не набралось — берём что есть
+        share = _cpu_share(start, _CPU_SAMPLES[-1]) if start is not None else None
+        if share is not None:
+            _CPU_LOAD = round(share * 100, 1)
+        keep_from = time.monotonic() - CPU_KEEP
+        _CPU_SAMPLES[:] = [sample for sample in _CPU_SAMPLES if sample.at >= keep_from] \
+            or _CPU_SAMPLES[-1:]
+        return _CPU_LOAD
 
 
 def _cpu_percent() -> int:
-    """Загрузка CPU в процентах; первый замер за жизнь процесса — с паузой."""
-    global _CPU_SAMPLED
-    module = _psutil()
-    if _CPU_SAMPLED:
-        return int(round(module.cpu_percent(interval=None)))
-    _CPU_SAMPLED = True
-    return int(round(module.cpu_percent(interval=0.2)))
+    """Загрузка CPU для карточки: целые проценты от устойчивой оценки."""
+    return int(round(_cpu_load()))
 
 
 def _uptime_text(seconds) -> str:
@@ -910,14 +988,25 @@ def validate(widget) -> list[str]:
     """Проверка секции ``[widget:…]`` на этапе загрузки конфига."""
     problems: list[str] = []
     spec = type_spec(widget.type)
-    if spec is None:
+    remote = bool(remote_host(widget.options))
+    if spec is None and not remote:
         hint = repr(widget.type) if widget.type else "не указан type"
         problems.append(f"виджет {widget.name!r}: {hint} — известны {', '.join(sorted(REGISTRY))}")
         return problems
-    missing = [key for key in spec.REQUIRED if not widget.options.get(key)]
-    if missing:
-        problems.append(f"виджет {widget.name!r} ({widget.type}): не заданы {', '.join(missing)}")
-    extra = [key for key in widget.options if key not in spec.REQUIRED + spec.OPTIONAL + ("type", "fields")]
+    if spec is None:
+        # тип придёт вместе с данными: у соседа виджет уже описан
+        extra = [key for key in widget.options if key not in ("fields",) + REMOTE_OPTIONS]
+        if extra:
+            problems.append(f"виджет {widget.name!r}: лишние ключи {', '.join(sorted(extra))}")
+        if not widget.options.get("external"):
+            problems.append(f"виджет {widget.name!r}: без type нужен external — какой виджет брать у хоста")
+        return problems
+    if not remote:      # у соседа диск уже прочитан: disk = "" локально не нужен
+        missing = [key for key in spec.REQUIRED if not widget.options.get(key)]
+        if missing:
+            problems.append(f"виджет {widget.name!r} ({widget.type}): не заданы {', '.join(missing)}")
+    extra = [key for key in widget.options
+             if key not in spec.REQUIRED + spec.OPTIONAL + ("type", "fields") + REMOTE_OPTIONS]
     if extra:
         problems.append(f"виджет {widget.name!r} ({widget.type}): лишние ключи {', '.join(sorted(extra))}")
     problems += _field_problems(widget, spec)
@@ -960,10 +1049,34 @@ def _failed(widget, spec, stamp: float, detail: str) -> dict:
             "bar": None}
 
 
+def _render_fields(widget, spec, values: dict) -> list[dict]:
+    """Поля карточки из сырых значений: подписи и формат — от типа виджета."""
+    labels = labels_for(spec)
+    options = widget.options
+    fields = []
+    for key in field_keys(widget, spec):
+        value = values.get(key)
+        fields.append({"key": key, "label": labels[key],
+                       "value": spec.show(key, value, options),
+                       "tone": spec.tone(key, value, options),
+                       "tip": NO_TEMPERATURE if key == "cputemp" and value is None else None})
+    return fields
+
+
+def _safe_bar(spec, values: dict, options: dict) -> dict | None:
+    """Полосочка не имеет права ронять карточку."""
+    try:
+        return spec.bar(values, options)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def run_widget(widget) -> dict:
     """Один поход в чужой API. Никогда не бросает: ошибка — это тоже состояние."""
-    spec = type_spec(widget.type)
     stamp = time.time()
+    if remote_host(widget.options):
+        return _remote_widget(widget, stamp)      # данные со своего соседа, не из psutil
+    spec = type_spec(widget.type)
     if spec is None:
         return _failed(widget, None, stamp, f"Unknown widget type {widget.type}")
     missing = [key for key in spec.REQUIRED if not widget.options.get(key)]
@@ -977,21 +1090,121 @@ def run_widget(widget) -> dict:
         return _failed(widget, spec, stamp, f"{type(error).__name__}: {error}")
     if not isinstance(values, dict):
         return _failed(widget, spec, stamp, "Widget returned no data")
-    labels = labels_for(spec)
-    options = widget.options
-    fields = []
-    for key in field_keys(widget, spec):
-        value = values.get(key)
-        fields.append({"key": key, "label": labels[key],
-                       "value": spec.show(key, value, options),
-                       "tone": spec.tone(key, value, options),
-                       "tip": NO_TEMPERATURE if key == "cputemp" and value is None else None})
-    try:
-        bar = spec.bar(values, options)
-    except Exception:  # noqa: BLE001 — полосочка не имеет права ронять карточку
-        bar = None
     return {"ok": True, "name": widget.name, "type": widget.type, "title": spec.TITLE,
-            "caption": caption_for(widget), "fields": fields, "bar": bar, "at": stamp}
+            "caption": caption_for(widget), "fields": _render_fields(widget, spec, values),
+            "values": _plain(values), "bar": _safe_bar(spec, values, widget.options), "at": stamp}
+
+
+# --------------------------------------------------------------------------- #
+# виджет с другого хоста: host = "192.168.0.112:24556", external = "disk"
+#
+# Сосед — такой же dashboard. Он отдаёт ``/api/widget?id=…``: готовые поля и сырые
+# значения. Сырые нужны, чтобы подпись, единицы и шкала температуры остались
+# своими: цифры чужие, оформление — этого хоста.
+# --------------------------------------------------------------------------- #
+
+REMOTE_PATH = "/api/widget?id="
+REMOTE_OPTIONS = ("host", "external", "timeout")
+
+
+def remote_host(options: dict | None) -> str:
+    """``host = "192.168.0.112:24556"`` → ``http://192.168.0.112:24556``; "" — свой хост."""
+    raw = str((options or {}).get("host") or "").strip()
+    if not raw:
+        return ""
+    if "://" not in raw:
+        raw = "http://" + raw
+    return raw.rstrip("/")
+
+
+def remote_label(options: dict | None) -> str:
+    """Адрес соседа как его написали в конфиге — для подсказки на карточке."""
+    raw = str((options or {}).get("host") or "").strip()
+    return raw.replace("http://", "").replace("https://", "").rstrip("/")
+
+
+def remote_identifiers(widget) -> list[str]:
+    """Кого спрашивать у соседа: external, иначе тип, иначе имя секции."""
+    asked = [str(widget.options.get("external") or "").strip(), (widget.type or "").strip(),
+             (widget.name or "").strip()]
+    found: list[str] = []
+    known: set[str] = set()
+    for item in asked:
+        if item and item.casefold() not in known:
+            found.append(item)
+            known.add(item.casefold())
+    return found
+
+
+def find_widget(site, ident: str):
+    """Виджет по имени секции, по «карточка.виджет» или по типу — что просит сосед."""
+    key = (ident or "").strip().casefold()
+    if not key:
+        return None
+    found = site.widgets.get(key)
+    if found is None and re.search(r"[/.]", key):
+        found = site.widgets.get(re.split(r"[/.]", key)[-1])
+    if found is None:
+        wanted = canonical_type(key)
+        found = next((widget for widget in site.widgets.values()
+                      if canonical_type(widget.type) == wanted), None)
+    return found
+
+
+def _plain(values: dict) -> dict:
+    """Только то, что переживёт JSON: соседу незачем больше."""
+    return {key: value for key, value in (values or {}).items()
+            if value is None or isinstance(value, (bool, int, float, str))}
+
+
+def remote_payload(widget) -> dict:
+    """Ответ соседу: тот же виджет, что на карточке, вместе с сырыми значениями.
+
+    Ключ кэша тот же, что у карточки: сосед и своя страница берут один поход
+    к источнику, а не два.
+    """
+    answer = _cached(f"widget|{widget.name.casefold()}", lambda: run_widget(widget), WIDGET_TTL).value
+    return dict(answer, id=widget.name)      # name — как на карточке, id — как спросили
+
+
+def _fetch_remote(widget) -> dict:
+    """Первый ответ соседа, где виджет нашёлся: external → тип → имя секции."""
+    base = remote_host(widget.options)
+    timeout = _num(widget.options.get("timeout"), DEFAULT_TIMEOUT)
+    problem = f"No widget {widget.name!r} there"
+    for ident in remote_identifiers(widget):
+        try:
+            raw = _request(base + REMOTE_PATH + quote(ident, safe=""), timeout=timeout)
+            answer = _json(raw, "this dashboard, without /api/widget?")
+        except WidgetFailure as error:
+            raise WidgetFailure(str(error)) from error   # хост один: другой id не поможет
+        if answer.get("ok"):
+            return answer
+        problem = str(answer.get("error") or problem)
+    raise WidgetFailure(problem)
+
+
+def _remote_widget(widget, stamp: float) -> dict:
+    """Виджет соседа: цифры оттуда, подпись, единицы и шкала — свои."""
+    spec = type_spec(widget.type)
+    try:
+        payload = _fetch_remote(widget)
+    except WidgetFailure as error:
+        return _failed(widget, spec, stamp, str(error))
+    except Exception as error:  # noqa: BLE001
+        return _failed(widget, spec, stamp, f"{type(error).__name__}: {error}")
+    spec = spec or type_spec(payload.get("type"))
+    values = payload.get("values") if isinstance(payload.get("values"), dict) else {}
+    fields = _render_fields(widget, spec, values) if spec is not None and values else []
+    if not [field for field in fields if field.get("value") is not None]:
+        fields = [dict(field) for field in payload.get("fields") or []]   # не сошлись типами
+    bar = _safe_bar(spec, values, widget.options) if spec is not None and values else payload.get("bar")
+    return {"ok": True, "name": widget.name,
+            "type": widget.type or str(payload.get("type") or ""),
+            "title": spec.TITLE if spec is not None else str(payload.get("title") or widget.name),
+            "caption": caption_for(widget) or payload.get("caption"),
+            "fields": fields, "values": _plain(values), "bar": bar, "at": stamp,
+            "remote": remote_host(widget.options)}
 
 
 # --------------------------------------------------------------------------- #
@@ -1067,6 +1280,7 @@ _LOCK = threading.Lock()
 def clear_cache() -> None:
     with _LOCK:
         _CACHE.clear()
+        _KEY_LOCKS.clear()
         _NPM_TOKENS.clear()
 
 
@@ -1075,15 +1289,34 @@ def _peek(key: str) -> Entry | None:
         return _CACHE.get(key)
 
 
-def _cached(key: str, producer, ttl: float) -> Entry:
-    now = time.monotonic()
-    entry = _peek(key)
-    if entry is not None and entry.expires > now:
-        return entry
-    entry = Entry(value=producer(), expires=time.monotonic() + ttl, at=time.time())
+_KEY_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _key_lock(key: str) -> threading.Lock:
     with _LOCK:
-        _CACHE[key] = entry
-    return entry
+        lock = _KEY_LOCKS.get(key)
+        if lock is None:
+            lock = _KEY_LOCKS[key] = threading.Lock()
+        return lock
+
+
+def _cached(key: str, producer, ttl: float) -> Entry:
+    """Значение под ключом: свежее отдаём, протухшее обновляет один поток.
+
+    Без замка на ключ две вкладки в одну секунду давали два похода к источнику
+    и два замера CPU: второй считался по дельте в микросекунды.
+    """
+    entry = _peek(key)
+    if entry is not None and entry.expires > time.monotonic():
+        return entry
+    with _key_lock(key):
+        entry = _peek(key)
+        if entry is not None and entry.expires > time.monotonic():
+            return entry
+        entry = Entry(value=producer(), expires=time.monotonic() + ttl, at=time.time())
+        with _LOCK:
+            _CACHE[key] = entry
+        return entry
 
 
 def peek_widget(widget) -> dict | None:

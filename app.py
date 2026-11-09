@@ -95,6 +95,21 @@ def api_state():
     return json_response(widget_lib.snapshot(site, online=online))
 
 
+@app.get("/api/widget")
+def api_widget():
+    """Один виджет по имени — для соседнего дашборда (``host`` + ``external``)."""
+    ident = (request.args.get("id") or request.args.get("name") or "").strip()
+    try:
+        site = load(config_path())
+    except Exception as exc:  # noqa: BLE001 — сосед получит причину, а не 500
+        return json_response({"ok": False, "id": ident, "error": str(exc)})
+    widget = widget_lib.find_widget(site, ident)
+    if widget is None:
+        return json_response({"ok": False, "id": ident,
+                               "error": f"No widget {ident!r} on this dashboard"}), 404
+    return json_response(widget_lib.remote_payload(widget))
+
+
 def json_response(payload: dict):
     response = make_response(json.dumps(payload, ensure_ascii=False))
     response.headers["Content-Type"] = "application/json; charset=utf-8"

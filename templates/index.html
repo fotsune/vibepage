@@ -115,7 +115,7 @@
             {% endif %}
             {% for widget in service.widgets %}
             <div class="card-widget" data-widget="{{ widget.name }}" data-phase="{{ widget.phase }}"{% if widget.phase == "error" and widget.error %} data-tip="{{ widget.error }}"{% endif %}>
-              {% if widget.caption %}<div class="widget-caption" data-tip="{{ widget.caption }}">{{ widget.caption }}</div>{% endif %}
+              {% if widget.caption %}<div class="widget-caption" data-tip="{{ widget.caption_tip or widget.caption }}">{{ widget.caption }}</div>{% endif %}
               <div class="widget-fields" data-count="{{ widget.fields|length }}">
                 {% for field in widget.fields %}
                 <div class="widget-field" data-field="{{ field.key }}">

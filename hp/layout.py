@@ -140,11 +140,16 @@ def _widget_view(name: str, site: Site) -> dict:
             values[field["key"]] = field.get("value")
             tones[field["key"]] = field.get("tone")
             tips[field["key"]] = field.get("tip")
+    # подпись: своя из name, иначе та, что пришла вместе с чужими данными
+    caption = widget_lib.caption_for(widget) or (state or {}).get("caption")
+    # у виджета-соседа подпись подсказывает, чьи это цифры
+    label = widget_lib.remote_label(widget.options)
     return {
         "name": widget.name,
         "title": widget_lib.title_for(widget),
         "kind": widget.type,
-        "caption": widget_lib.caption_for(widget),
+        "caption": caption,
+        "caption_tip": " · ".join(item for item in (caption, f"from {label}") if item) if label else None,
         "fields": [
             {"key": field["key"], "label": field["label"],
              "value": widget_lib.CROSS if failed else values.get(field["key"]),

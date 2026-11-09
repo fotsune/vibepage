@@ -61,7 +61,8 @@ class AppTests(unittest.TestCase):
     def test_only_html_routes_exist(self):
         # состояние карточек — единственный JSON в приложении
         rules = {rule.rule for rule in app_module.app.url_map.iter_rules()}
-        self.assertEqual(rules, {"/", "/api/state", "/icon/<path:name>", "/healthz", "/static/<path:filename>"})
+        self.assertEqual(rules, {"/", "/api/state", "/api/widget", "/icon/<path:name>", "/healthz",
+                                  "/static/<path:filename>"})
 
     def test_page_contains_no_config_syntax(self):
         body = self.client.get("/").get_data(as_text=True)

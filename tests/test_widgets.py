@@ -5,13 +5,15 @@ import json
 import os
 import socket
 import tempfile
+import threading
 import unittest
+from collections import namedtuple
 from unittest import mock
 
 import app as app_module
 
 from hp import thermal, widgets
-from hp.config import load
+from hp.config import Widget, load
 from hp.layout import build_page
 
 CONFIG = """
@@ -50,6 +52,17 @@ def fake_urlopen(payload, seen=None):
     def opener(request, timeout=None, context=None):
         if seen is not None:
             seen.append(request.full_url if hasattr(request, "full_url") else request)
+        return FakeResponse(json.dumps(payload).encode("utf-8"))
+    return opener
+
+
+def fake_neighbour(answer, seen=None):
+    """Соседний дашборд: на /api/widget?id=… отвечает тем, что дали (или чем скажет answer)."""
+    def opener(request, timeout=None, context=None):
+        url = request.full_url if hasattr(request, "full_url") else str(request)
+        if seen is not None:
+            seen.append(url)
+        payload = answer(url) if callable(answer) else answer
         return FakeResponse(json.dumps(payload).encode("utf-8"))
     return opener
 
@@ -623,11 +636,23 @@ def _memory(total=16 * 1024 ** 3, available=6 * 1024 ** 3, percent=61.5):
     return type("Memory", (), {"total": total, "available": available, "percent": percent})()
 
 
+def _cpu_times_source(busy=0.42, step=10.0):
+    """Фейковый psutil: cpu_times() добавляет step секунд, из них busy — работе."""
+    tick = {"user": 0.0, "system": 0.0, "idle": 0.0, "iowait": 0.0}
+    times = namedtuple("cpu_times_t", "user system idle iowait")
+
+    def cpu_times():
+        tick["user"] += step * busy
+        tick["idle"] += step * (1 - busy)
+        return times(**tick)
+
+    return type("FakePsutil", (), {"cpu_times": staticmethod(cpu_times)})()
+
+
 class MultiWidgetTestCase(unittest.TestCase):
     def setUp(self):
         widgets.clear_cache()
-        widgets._CPU_SAMPLED = True          # без паузы в первом замере
-        self.addCleanup(setattr, widgets, "_CPU_SAMPLED", False)
+        widgets.forget_cpu_load()             # у каждого теста — чистые замеры CPU
         thermal.forget()                      # датчик температуры тоже кэширует
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -641,7 +666,7 @@ class MultiWidgetTestCase(unittest.TestCase):
 
     def psutil_patch(self, **values):
         fake = {
-            "cpu_percent": lambda interval=None: 42.0,
+            "cpu_times": _cpu_times_source().cpu_times,   # 42 % работы между двумя замерами
             "virtual_memory": lambda: _memory(),
             "boot_time": lambda: 1000.0,
             "sensors_temperatures": lambda: {
@@ -696,6 +721,51 @@ class MultiWidgetTestCase(unittest.TestCase):
         self.assertEqual(values["cpu"], "42%")
         self.assertEqual(values["cputemp"], "149°F")          # units = imperial
         self.assertRegex(values["uptime"], r"^\d+[dhm] ")
+
+    def _in_another_thread(self, call):
+        """Значение из свежего потока: psutil.cpu_percent там отвечает 0 %."""
+        box = {}
+        thread = threading.Thread(target=lambda: box.setdefault("value", call()))
+        thread.start()
+        thread.join()
+        return box["value"]
+
+    def test_cpu_load_does_not_depend_on_the_calling_thread(self):
+        fake = _cpu_times_source(busy=0.1)
+        widgets.forget_cpu_load()
+        with mock.patch.object(widgets, "CPU_MIN_GAP", 0.0):
+            first = self._in_another_thread(lambda: widgets._cpu_load(fake, prime=0))
+            second = self._in_another_thread(lambda: widgets._cpu_load(fake, prime=0))
+            third = self._in_another_thread(lambda: widgets._cpu_load(fake, prime=0))
+        self.assertEqual(first, 0.0)                    # один замер — ещё не о чем говорить
+        for value in (second, third):
+            self.assertAlmostEqual(value, 10.0, delta=0.5)   # не 0 и не 100
+
+    def test_cpu_load_is_an_average_not_a_glimpse(self):
+        widgets.forget_cpu_load()
+        self.assertAlmostEqual(widgets._cpu_load(_cpu_times_source(busy=0.13), prime=0.01), 13.0, delta=0.5)
+
+    def test_cpu_load_is_not_sampled_twice_in_a_row(self):
+        fake = _cpu_times_source(busy=0.2)
+        widgets.forget_cpu_load()
+        widgets._cpu_load(fake, prime=0.01)              # первый замер (13 %…): копим историю
+        value = widgets._cpu_load(fake, prime=0)
+        self.assertEqual(widgets._cpu_load(fake, prime=0), value)   # второй запрос — из тех же замеров
+
+    def test_api_widget_hands_one_widget_to_a_neighbour(self):
+        with self.psutil_patch():
+            data = json.loads(self.client.get("/api/widget?id=disk").get_data(as_text=True))
+        self.assertTrue(data["ok"], data.get("error"))
+        self.assertEqual(data["id"], "disk")
+        self.assertEqual(data["values"]["total"], 2000)     # два пути в конфиге, по 1000 каждый
+        self.assertEqual(data["name"], "disk")             # и то же самое, что видит карточка
+        self.assertEqual([field["key"] for field in data["fields"]], ["free", "consumed", "total"])
+
+    def test_api_widget_explains_a_missing_id(self):
+        with self.psutil_patch():
+            missing = self.client.get("/api/widget?id=nope")
+        self.assertEqual(missing.status_code, 404)
+        self.assertFalse(json.loads(missing.get_data(as_text=True))["ok"])
 
     def test_cpu_metric_is_the_default(self):
         options = dict(self.site.widgets["cpu"].options)
@@ -805,3 +875,104 @@ class MultiWidgetTestCase(unittest.TestCase):
         list_widget = type("W", (), {"options": {"fields": ["a", "b"]}})()
         self.assertEqual(widgets.raw_fields(string_widget), ["a", "b"])
         self.assertEqual(widgets.raw_fields(list_widget), ["a", "b"])
+
+
+class RemoteWidgetTestCase(unittest.TestCase):
+    """Виджет с соседнего дашборда: host = "192.168.0.112:24556", external = "disk"."""
+
+    def setUp(self):
+        widgets.clear_cache()
+
+    def _widget(self, kind="disk", **options):
+        options.setdefault("host", "192.168.0.112:24556")
+        options.setdefault("external", "disk")
+        return Widget(name="far", type=kind, options=options)
+
+    def _answer(self, values=None, **extra):
+        payload = {
+            "ok": True, "id": "disk", "type": "disk", "title": "Disk", "caption": "/",
+            "values": {"free": 400, "consumed": 600, "total": 1000} if values is None else values,
+            "fields": [{"key": "free", "label": "free", "value": "1 GB", "tone": "idle", "tip": None}],
+            "bar": {"value": 0.6, "tone": "good"}, "at": 1.0,
+        }
+        payload.update(extra)
+        return payload
+
+    def _run(self, widget, answer, seen=None):
+        with mock.patch.object(widgets, "urlopen", fake_neighbour(answer, seen)):
+            return widgets.run_widget(widget)
+
+    # ── данные оттуда, оформление отсюда ───────────────────────────
+
+    def test_numbers_come_from_the_neighbour_and_units_stay_local(self):
+        state = self._run(self._widget(name="NAS"), self._answer())
+        self.assertTrue(state["ok"], state.get("error"))
+        values = {field["key"]: field["value"] for field in state["fields"]}
+        self.assertEqual(values["free"], "400 B")       # сосед отдал байты — формат наш
+        self.assertEqual(values["consumed"], "600 B")
+        self.assertEqual(values["total"], "1.0 KB")
+        self.assertEqual(state["caption"], "NAS")       # name с этой стороны главнее
+        self.assertAlmostEqual(state["bar"]["value"], 0.6, places=2)
+
+    def test_local_fields_pick_what_to_show(self):
+        state = self._run(self._widget(fields="consumed"), self._answer())
+        self.assertEqual([field["key"] for field in state["fields"]], ["consumed"])
+
+    def test_neighbour_is_asked_by_external_then_by_type(self):
+        seen = []
+
+        def answer(url):
+            return self._answer() if url.endswith("id=cpu") else {"ok": False, "error": "No widget there"}
+
+        widget = self._widget(kind="cpu", external="missing_one")
+        state = self._run(widget, answer, seen)
+        self.assertTrue(state["ok"], state.get("error"))
+        self.assertTrue(seen[0].endswith("id=missing_one"))
+        self.assertTrue(seen[1].endswith("id=cpu"))     # второй заход — по типу
+
+    def test_neighbour_address_gets_a_scheme(self):
+        self.assertEqual(widgets.remote_host({"host": "192.168.0.112:24556"}), "http://192.168.0.112:24556")
+        self.assertEqual(widgets.remote_host({"host": "http://box:8080/"}), "http://box:8080")
+        self.assertEqual(widgets.remote_host({}), "")
+
+    def test_widget_missing_on_the_neighbour_shows_crosses(self):
+        state = self._run(self._widget(), {"ok": False, "error": "No widget 'disk' on this dashboard"})
+        self.assertFalse(state["ok"])
+        self.assertEqual([field["value"] for field in state["fields"]], [widgets.CROSS] * 3)
+        self.assertIn("No widget", state["error"])
+
+    def test_neighbour_down_is_one_short_phrase(self):
+        from urllib.error import URLError
+
+        def opener(request, timeout=None, context=None):
+            raise URLError(ConnectionRefusedError(10061, "No connection could be made"))
+        with mock.patch.object(widgets, "urlopen", opener):
+            state = widgets.run_widget(self._widget())
+        self.assertFalse(state["ok"])
+        self.assertEqual(state["error"], "Port closed.")
+        self.assertNotIn("192.168.0.112", state["error"])
+
+    # ── конфиг ─────────────────────────────────────────────────────
+
+    def test_remote_widget_needs_no_disk_path(self):
+        self.assertEqual(widgets.validate(self._widget()), [])
+
+    def test_remote_widget_without_type_needs_external(self):
+        bare = Widget(name="far", type="", options={"host": "192.168.0.112:24556", "external": "disk"})
+        self.assertEqual(widgets.validate(bare), [])
+        nameless = Widget(name="far", type="", options={"host": "192.168.0.112:24556"})
+        self.assertIn("external", widgets.validate(nameless)[0])
+
+    def test_remote_widget_without_type_takes_the_type_from_the_answer(self):
+        bare = Widget(name="far", type="", options={"host": "192.168.0.112:24556", "external": "disk"})
+        state = self._run(bare, self._answer())
+        self.assertTrue(state["ok"], state.get("error"))
+        self.assertEqual(state["title"], "Disk")
+        self.assertEqual([field["key"] for field in state["fields"]], ["free", "consumed", "total"])
+
+    def test_find_widget_by_name_card_or_type(self):
+        site = type("Site", (), {"widgets": {"nas": Widget(name="nas", type="disk", options={})}})()
+        self.assertEqual(widgets.find_widget(site, "nas").name, "nas")
+        self.assertEqual(widgets.find_widget(site, "Box.nas").name, "nas")
+        self.assertEqual(widgets.find_widget(site, "disk").name, "nas")   # по типу
+        self.assertIsNone(widgets.find_widget(site, "ram"))
