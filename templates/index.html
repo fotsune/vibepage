@@ -84,7 +84,7 @@
           {% if group.merged %}<span class="panel-tag" data-tip="Объединена с группой {{ group.root }}">merged</span>{% endif %}
           <span class="panel-count">{{ group.services|length }}</span>
         </h2>
-        <div class="cards">
+        <div class="cards"{% if group.cols %} style="--group-cols: {{ group.cols }}"{% endif %}>
           {% for service in group.services %}
           {# без link и alt карточка никуда не ведёт: <a> без href не кликается и не меняет курсор #}
           <article class="card {% if service.url_alt %}card-with-alt{% endif %}{% if service.widgets %} card-with-widget{% endif %}{% if not service.url %} card-static{% endif %}" data-search="{{ (service.name ~ ' ' ~ service.desc ~ ' ' ~ group.name)|lower }}" data-key="{{ service.key }}" style="--i: {{ loop.index0 }}">

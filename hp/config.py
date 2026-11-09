@@ -33,8 +33,9 @@ INT_RE = re.compile(r"[+-]?\d+")
 
 SERVICE_KEYS = {"link", "alt", "name", "icon", "icon_link", "icon_color", "widget", "ping", "ping_timeout",
                 "desc", "group", "priority", "new_page"}
-GROUP_KEYS = {"name", "priority", "link", "color"}
-SYSTEM_KEYS = {"title", "icon_path", "config_path", "cols", "mobile_cols", "open_in_new_page", "poll"}
+GROUP_KEYS = {"name", "priority", "link", "color", "cols"}
+SYSTEM_KEYS = {"title", "icon_path", "config_path", "cols", "mobile_cols", "open_in_new_page", "poll",
+               "state_interval", "group_cols"}
 HEADER_KEYS = {"show", "enabled", "header", "time", "time_format", "icon", "favicon", "search",
                "link_mode", "main_alt", "desc", "tagline", "subtitle"}
 LINK_MODES = {"auto": "auto", "main": "main", "link": "main", "primary": "main", "external": "main",
@@ -56,6 +57,7 @@ class System:
     mobile_cols: int = 1
     open_in_new_page: bool = False
     poll: int = 10                   # раз в сколько секунд клиент спрашивает состояние
+    group_cols: int = 3              # максимум столбцов карточек в группе; 0 — сколько влезет
 
 
 @dataclass
@@ -88,6 +90,7 @@ class Group:
     priority: int | None = None
     link: str | None = None
     color: str | None = None          # accent; None means pick one from the name
+    cols: int | None = None           # столбцов карточек в группе; None — system.group_cols
     declared: bool = True
     source: str | None = None
 
@@ -468,8 +471,11 @@ def _apply_system(site: Site, values: dict, source: str, where: str, warnings: l
             system.cols = _as_int(value, where, "cols", warnings, system.cols, minimum=1)
         elif key == "mobile_cols":
             system.mobile_cols = _as_int(value, where, "mobile_cols", warnings, system.mobile_cols, minimum=1)
-        elif key == "poll":
-            system.poll = _as_int(value, where, "poll", warnings, system.poll, minimum=3)
+        elif key in ("poll", "state_interval"):
+            # одно и то же: раз в сколько секунд клиент спрашивает /api/state
+            system.poll = _as_int(value, where, key, warnings, system.poll, minimum=3)
+        elif key == "group_cols":
+            system.group_cols = _as_int(value, where, "group_cols", warnings, system.group_cols, minimum=0)
         elif key == "open_in_new_page":
             system.open_in_new_page = _as_bool(
                 value, where, "open_in_new_page", warnings, system.open_in_new_page
@@ -496,6 +502,7 @@ def _make_group(section: dict, where: str, warnings: list[str]) -> Group:
         color=_color_of(values.get("color"), where, "color", warnings),
         priority=_as_int(values.get("priority"), where, "priority", warnings),
         link=_as_str(values.get("link")),
+        cols=_as_int(values.get("cols"), where, "cols", warnings, minimum=0),
         declared=True,
         source=section["source"],
     )

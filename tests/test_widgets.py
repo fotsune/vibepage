@@ -9,11 +9,12 @@ import threading
 import unittest
 from collections import namedtuple
 from unittest import mock
+from urllib.error import URLError
 
 import app as app_module
 
 from hp import thermal, widgets
-from hp.config import Widget, load
+from hp.config import Group, Service, Site, System, Widget, group_key, load
 from hp.layout import build_page
 
 CONFIG = """
@@ -564,6 +565,12 @@ class FailureShapeTests(WidgetTestCase):
         self.assertNotIn("WinError", state["error"])
         self.assertLess(len(state["error"]), 40)
 
+    def test_name_instead_of_ip_is_a_secret_too(self):
+        # сосед по имени, а не по IP: подсказка всё равно без адреса
+        self.assertEqual(widgets._clean("No widget disk on nas.local:24556"), "No widget disk on address")
+        self.assertEqual(widgets._clean("timed out at http://nas.local:24556/api/widget"),
+                         "timed out at address")
+
     def test_failure_replaces_numbers_with_crosses(self):
         good = [{"State": "running"}, {"State": "exited"}]
         site = load(self.path)
@@ -868,6 +875,18 @@ class MultiWidgetTestCase(unittest.TestCase):
         far = type("W", (), {"type": "disk", "options": {"external": "disk", "host": "10.0.0.2:24556"}})()
         self.assertIsNone(widgets.caption_for(far))      # пути там свои — подпись придёт с данными
 
+    def test_card_never_shows_the_address_it_tried(self):
+        # подсказка у подписи говорит, откуда цифры, но адреса на карточке нет
+        site = Site(system=System())
+        site.groups[group_key("Lab")] = Group(name="Lab", priority=1)
+        site.widgets["far"] = Widget(name="far", type="disk",
+                                      options={"host": "10.0.0.2:24556", "external": "disk"})
+        site.services.append(Service(name="Box", group="Lab", group_key="lab", widgets=["far"]))
+        view = build_page(site)["columns"][0][0]["services"][0]["widgets"][0]
+        self.assertEqual(view["caption_tip"], widgets.REMOTE_HINT)
+        self.assertNotIn("10.0.0.2", view["caption_tip"])
+        self.assertNotIn("24556", view["caption_tip"])
+
     def test_disk_name_is_a_compact_caption(self):
         with self.psutil_patch():
             state = widgets.run_widget(self.site.widgets["disk"])
@@ -934,6 +953,15 @@ class RemoteWidgetTestCase(unittest.TestCase):
         self.assertEqual(values["total"], "1.0 KB")
         self.assertEqual(state["caption"], "NAS")       # name с этой стороны главнее
         self.assertAlmostEqual(state["bar"]["value"], 0.6, places=2)
+
+    def test_failure_speaks_of_the_cause_and_not_the_address(self):
+        widget = self._widget(name="NAS")
+        reason = URLError("timed out talking to http://10.0.0.2:24556/api/widget?id=disk")
+        with mock.patch.object(widgets, "urlopen", side_effect=reason):
+            state = widgets.run_widget(widget)
+        self.assertFalse(state["ok"])
+        self.assertNotIn("10.0.0.2", state["error"])
+        self.assertNotIn("http", state["error"])
 
     def test_local_fields_pick_what_to_show(self):
         state = self._run(self._widget(fields="consumed"), self._answer())

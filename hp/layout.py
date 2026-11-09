@@ -142,14 +142,14 @@ def _widget_view(name: str, site: Site) -> dict:
             tips[field["key"]] = field.get("tip")
     # подпись: своя из name, иначе та, что пришла вместе с чужими данными
     caption = widget_lib.caption_for(widget) or (state or {}).get("caption")
-    # у виджета-соседа подпись подсказывает, чьи это цифры
+    # у виджета-соседа подпись говорит, что цифры не отсюда; адреса на карточке нет
     label = widget_lib.remote_label(widget.options)
     return {
         "name": widget.name,
         "title": widget_lib.title_for(widget),
         "kind": widget.type,
         "caption": caption,
-        "caption_tip": " · ".join(item for item in (caption, f"from {label}") if item) if label else None,
+        "caption_tip": " · ".join(item for item in (caption, widget_lib.REMOTE_HINT) if item) if label else None,
         "fields": [
             {"key": field["key"], "label": field["label"],
              "value": widget_lib.CROSS if failed else values.get(field["key"]),
@@ -276,8 +276,11 @@ def build_page(site: Site, is_local: bool = True, resolve_icon=None) -> dict:
                                 widget_lib.card_identity(service, group.name))
                  for service in sorted(services_by_group.get(key, []), key=sort_key)]
         root = groups[roots[key]]
+        # сколько столбцов карточек отведено группе: своё cols, иначе system.group_cols; 0 — без предела
+        card_cols = group.cols if group.cols is not None else site.system.group_cols
         columns[column_of[key] - 1].append({
             "name": group.name,
+            "cols": max(0, card_cols or 0),
             "flow": flow,
             "accent": accent_of[roots[key]],
             "root": root.name,

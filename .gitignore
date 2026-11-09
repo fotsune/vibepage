@@ -9,3 +9,4 @@ _screens/
 static/_probe.html
 config/.env
 static/_probe_new.html
+static/_cols_probe.html

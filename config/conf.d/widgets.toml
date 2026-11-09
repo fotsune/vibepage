@@ -177,3 +177,34 @@ name = "C:, D:"        # подпись на карточке: одна стро
 disk = "C:\, D:\"      # пути как есть; на linux — /, /mnt/data
 diskunits = bytes       # bytes — 1.5 GB (1000), bbytes — 1.4 GiB (1024)
 fields = "free, consumed, total"
+
+
+[service:OtherHost]
+icon = "mdi:server"
+desc = "Другой хост"
+group = "Widgets"
+widget = "cpu_ext, ram_ext, disk_ext"     # каждый следующий — под предыдущим
+
+[widget:cpu_ext]
+type = cpu
+external = "cpu"
+host = http://192.168.0.113:24556
+fields = "cpu, cputemp, uptime"
+tempmin = 20            # шкала для температуры: ниже — зелёная, выше tempmax — красная
+tempmax = 90
+units = metric          # imperial переведёт температуру в °F (по умолчанию metric)
+
+[widget:ram_ext]
+type = ram
+external = "ram"
+host = http://192.168.0.113:24556
+fields = "free, consumed, total"
+ramunits = bytes        # bytes — 1.5 GB (1000), bbytes — 1.4 GiB (1024)
+
+[widget:disk_ext]
+type = disk
+external = "disk"
+host = http://192.168.0.113:24556
+name = "/"
+diskunits = bbytes
+fields = "free, consumed, total"

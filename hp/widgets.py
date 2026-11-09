@@ -74,6 +74,9 @@ class WidgetFailure(Exception):
 
 
 _ADDRESS = re.compile(r"(?:https?://)?(?:\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-fA-F:]+\])(?::\d+)?")
+# имя вместо IP: «http://nas.local:24556/api/…» или «nas.local:24556» — тоже адрес
+_ENDPOINT = re.compile(r"[a-z][a-z0-9+.-]*://[^\s,;)]+", re.I)
+_HOSTPORT = re.compile(r"\b(?:[\w-]+\.)+[\w-]+(?::\d+)?\b")
 _WINERR = re.compile(r"\[?WinError\s*\d+\]?|\[?Errno\s*-?\d+\]?")
 
 # коды отказов: WinError и errno в одном месте
@@ -86,7 +89,9 @@ _DNS = (11001, 11004, -2, -3, 8)
 def _clean(text: str) -> str:
     """Причина без адреса и кодов ОС."""
     text = _WINERR.sub("", str(text or ""))
+    text = _ENDPOINT.sub("address", text)
     text = _ADDRESS.sub("address", text)
+    text = _HOSTPORT.sub("address", text)
     return " ".join(text.split()).strip(" :.,")
 
 
@@ -1151,8 +1156,11 @@ def remote_host(options: dict | None) -> str:
     return raw.rstrip("/")
 
 
+REMOTE_HINT = "from another dashboard"      # подсказка у подписи: адреса на карточке нет
+
+
 def remote_label(options: dict | None) -> str:
-    """Адрес соседа как его написали в конфиге — для подсказки на карточке."""
+    """Адрес соседа как его написали в конфиге — для проверки и тестов."""
     raw = str((options or {}).get("host") or "").strip()
     return raw.replace("http://", "").replace("https://", "").rstrip("/")
 

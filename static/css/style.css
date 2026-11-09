@@ -360,7 +360,14 @@ a { color: inherit; text-decoration: none; }
 
 /* ------------------------------------------------------------------ card */
 
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 9px; }
+/* --group-cols — максимум столбцов карточек в группе (group_cols, у группы — cols):
+   доля не уже 196px, но и не шире 1/N полосы, поэтому лишние столбцы просто не влезают.
+   Переменной нет — предел 99, то есть сколько поместится. */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(max(196px, calc((100% - (var(--group-cols, 99) - 1) * 9px) / var(--group-cols, 99))), 1fr));
+  gap: 9px;
+}
 
 .card {
   position: relative;
@@ -560,7 +567,7 @@ a { color: inherit; text-decoration: none; }
 /* --------------------------------------------------------- адаптивность */
 
 @media (max-width: 1100px) {
-  .cards { grid-template-columns: repeat(auto-fill, minmax(178px, 1fr)); }
+  .cards { grid-template-columns: repeat(auto-fill, minmax(max(178px, calc((100% - (var(--group-cols, 99) - 1) * 9px) / var(--group-cols, 99))), 1fr)); }
 }
 
 @media (max-width: 900px) {
