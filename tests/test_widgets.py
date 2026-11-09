@@ -10,7 +10,7 @@ from unittest import mock
 
 import app as app_module
 
-from hp import widgets
+from hp import thermal, widgets
 from hp.config import load
 from hp.layout import build_page
 
@@ -576,7 +576,7 @@ class FailureShapeTests(WidgetTestCase):
 
 
 # --------------------------------------------------------------------------- #
-# несколько виджетов, карточка без ссылки, sysinfo и disk
+# несколько виджетов, карточка без ссылки, cpu/ram/disk и имя виджета
 # --------------------------------------------------------------------------- #
 
 MULTI_CONFIG = r"""
@@ -588,21 +588,27 @@ cols = 1
 
 [service:Box]
 group = "Host"
-widget = "sys, disk"
+widget = "cpu, ram, disk"
 
 [service:NoLink]
 desc = "без ссылок"
 group = "Host"
 
-[widget:sys]
-type = sysinfo
+[widget:cpu]
+type = cpu
 tempmin = 20
 tempmax = 80
 units = imperial
-fields = "cpu, cputemp, memory, uptime"
+fields = "cpu, cputemp, uptime"
+
+[widget:ram]
+type = ram
+ramUnits = bbytes
+fields = "free, consumed, total"
 
 [widget:disk]
 type = disk
+name = "C:, D:"
 disk = "C:\, D:\"
 diskUnits = bbytes
 fields = "free, consumed, total"
@@ -613,11 +619,16 @@ def _disk_usage(total=1000, used=400, free=600, percent=40.0):
     return type("Usage", (), {"total": total, "used": used, "free": free, "percent": percent})()
 
 
+def _memory(total=16 * 1024 ** 3, available=6 * 1024 ** 3, percent=61.5):
+    return type("Memory", (), {"total": total, "available": available, "percent": percent})()
+
+
 class MultiWidgetTestCase(unittest.TestCase):
     def setUp(self):
         widgets.clear_cache()
         widgets._CPU_SAMPLED = True          # без паузы в первом замере
         self.addCleanup(setattr, widgets, "_CPU_SAMPLED", False)
+        thermal.forget()                      # датчик температуры тоже кэширует
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.path = os.path.join(self.tmp.name, "multi.toml")
@@ -631,7 +642,7 @@ class MultiWidgetTestCase(unittest.TestCase):
     def psutil_patch(self, **values):
         fake = {
             "cpu_percent": lambda interval=None: 42.0,
-            "virtual_memory": lambda: type("Mem", (), {"percent": 61.5})(),
+            "virtual_memory": lambda: _memory(),
             "boot_time": lambda: 1000.0,
             "sensors_temperatures": lambda: {
                 "coretemp": [type("Temp", (), {"label": "Package id 0", "current": 65.0})()]},
@@ -658,51 +669,77 @@ class MultiWidgetTestCase(unittest.TestCase):
     # ── несколько виджетов на карточке ────────────────────────────
 
     def test_widget_list_is_split_on_commas(self):
-        self.assertEqual(self.site.services[0].widgets, ["sys", "disk"])
+        self.assertEqual(self.site.services[0].widgets, ["cpu", "ram", "disk"])
 
-    def test_card_renders_both_widgets_in_order(self):
+    def test_card_renders_widgets_in_order(self):
         with self.psutil_patch():
             body = self.client.get("/").get_data(as_text=True)
-        card = body[body.index('data-key="Host::Box"'):][:2500]
-        self.assertLess(card.index('data-widget="sys"'), card.index('data-widget="disk"'))
+        card = body[body.index('data-key="Host::Box"'):][:4000]
+        order = [card.index('data-widget="%s"' % name) for name in ("cpu", "ram", "disk")]
+        self.assertEqual(order, sorted(order))               # каждый следующий — ниже
 
     def test_api_state_lists_every_widget_of_the_card(self):
         with self.psutil_patch():
             data = json.loads(self.client.get("/api/state").get_data(as_text=True))
         live = data["cards"]["Host::Box"]["widgets"]
-        self.assertEqual([item["name"] for item in live], ["sys", "disk"])
+        self.assertEqual([item["name"] for item in live], ["cpu", "ram", "disk"])
         self.assertEqual(live[0]["bar"]["tone"], "warn")     # полосочка едет вместе с данными
 
     # ── sysinfo ────────────────────────────────────────────────────
 
-    def test_sysinfo_reads_cpu_memory_uptime_and_temperature(self):
+    def test_cpu_reads_load_temperature_and_uptime(self):
         with self.psutil_patch():
-            state = widgets.run_widget(self.site.widgets["sys"])
+            state = widgets.run_widget(self.site.widgets["cpu"])
         self.assertTrue(state["ok"], state.get("error"))
         values = {field["key"]: field["value"] for field in state["fields"]}
-        self.assertEqual([field["key"] for field in state["fields"]],
-                         ["cpu", "cputemp", "memory", "uptime"])
+        self.assertEqual([field["key"] for field in state["fields"]], ["cpu", "cputemp", "uptime"])
         self.assertEqual(values["cpu"], "42%")
-        self.assertEqual(values["memory"], "62%")
         self.assertEqual(values["cputemp"], "149°F")          # units = imperial
         self.assertRegex(values["uptime"], r"^\d+[dhm] ")
 
-    def test_sysinfo_metric_is_the_default(self):
-        options = dict(self.site.widgets["sys"].options)
+    def test_cpu_metric_is_the_default(self):
+        options = dict(self.site.widgets["cpu"].options)
         options.pop("units")
-        self.assertEqual(widgets.SysInfo().show("cputemp", 65.0, options), "65°C")
+        self.assertEqual(widgets.Cpu().show("cputemp", 65.0, options), "65°C")
 
-    def test_sysinfo_bar_follows_the_temperature_range(self):
+    def test_cpu_bar_is_the_load_and_its_tone_follows_temperature(self):
         with self.psutil_patch():
-            state = widgets.run_widget(self.site.widgets["sys"])
-        self.assertAlmostEqual(state["bar"]["value"], 0.75, places=2)   # 65 между 20 и 80
-        self.assertEqual(state["bar"]["tone"], "warn")
+            state = widgets.run_widget(self.site.widgets["cpu"])
+        self.assertAlmostEqual(state["bar"]["value"], 0.42, places=2)   # 42% загрузки
+        self.assertEqual(state["bar"]["tone"], "warn")                  # 65 из 20..80
 
-    def test_sysinfo_bar_falls_back_to_cpu_without_a_sensor(self):
+    def test_cpu_bar_without_a_sensor_follows_the_load(self):
         with self.psutil_patch(sensors_temperatures=lambda: {}):
-            state = widgets.run_widget(self.site.widgets["sys"])
+            state = widgets.run_widget(self.site.widgets["cpu"])
         self.assertIsNone(state["fields"][1]["value"])                  # датчика нет — прочерк
         self.assertAlmostEqual(state["bar"]["value"], 0.42, places=2)
+        self.assertEqual(state["bar"]["tone"], "good")
+
+    def test_missing_sensor_explains_itself_in_the_tooltip(self):
+        with self.psutil_patch(sensors_temperatures=lambda: {}):
+            state = widgets.run_widget(self.site.widgets["cpu"])
+            data = json.loads(self.client.get("/api/state").get_data(as_text=True))
+        self.assertEqual(state["fields"][1]["tip"], widgets.NO_TEMPERATURE)
+        live = data["cards"]["Host::Box"]["widgets"][0]
+        self.assertEqual(live["fields"][1]["tip"], widgets.NO_TEMPERATURE)
+        with open("static/js/app.js", encoding="utf-8") as handle:   # клиент рисует её сам
+            self.assertIn("field.tip", handle.read())
+
+    def test_old_sysinfo_type_still_works(self):
+        self.assertIsInstance(widgets.type_spec("sysinfo"), widgets.Cpu)
+
+    def test_ram_shows_bytes_and_how_full_it_is(self):
+        with self.psutil_patch():
+            state = widgets.run_widget(self.site.widgets["ram"])
+        self.assertTrue(state["ok"], state.get("error"))
+        values = {field["key"]: field["value"] for field in state["fields"]}
+        self.assertEqual(values["free"], "6.0 GiB")            # ramUnits = bbytes
+        self.assertEqual(values["consumed"], "10.0 GiB")
+        self.assertEqual(values["total"], "16.0 GiB")
+        self.assertAlmostEqual(state["bar"]["value"], 0.625, places=2)
+
+    def test_ram_units_default_to_decimal(self):
+        self.assertEqual(widgets.Ram().show("total", 1_500_000, {}), "1.5 MB")
 
     # ── disk ───────────────────────────────────────────────────────
 
@@ -740,16 +777,25 @@ class MultiWidgetTestCase(unittest.TestCase):
         self.assertEqual(spec.show("total", 1_500_000, {}), "1.5 MB")
         self.assertEqual(spec.show("total", 1_500_000, {"diskunits": "bbytes"}), "1.4 MiB")
 
+    def test_disk_name_is_a_compact_caption(self):
+        with self.psutil_patch():
+            state = widgets.run_widget(self.site.widgets["disk"])
+            body = self.client.get("/").get_data(as_text=True)
+        self.assertEqual(state["caption"], "C:, D:")
+        self.assertIn('class="widget-caption"', body)
+        self.assertIn(">C:, D:<", body)
+
     # ── psutil нет вовсе (образ без нативного модуля) ──────────────
 
     def test_missing_psutil_is_a_widget_error_not_a_crash(self):
         with mock.patch.object(widgets, "psutil", None):
-            sys_state = widgets.run_widget(self.site.widgets["sys"])
+            cpu_state = widgets.run_widget(self.site.widgets["cpu"])
+            ram_state = widgets.run_widget(self.site.widgets["ram"])
             disk_state = widgets.run_widget(self.site.widgets["disk"])
             body = self.client.get("/").get_data(as_text=True)
-        self.assertFalse(sys_state["ok"])
-        self.assertFalse(disk_state["ok"])
-        self.assertEqual(sys_state["error"], "Not installed: psutil.")
+        for state in (cpu_state, ram_state, disk_state):
+            self.assertFalse(state["ok"])
+        self.assertEqual(cpu_state["error"], "Not installed: psutil.")
         self.assertIn('data-key="Host::Box"', body)      # дашборд живёт дальше
 
     # ── fields ─────────────────────────────────────────────────────

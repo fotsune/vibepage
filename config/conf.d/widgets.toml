@@ -151,23 +151,29 @@ fields = "containers_scanned, containers_updated, containers_failed"
 # ─── Хост: этот же сервер, где живёт dashboard ────────────────────
 # Без link и alt карточка никуда не ведёт: она просто показывает
 # состояние, кликнуть по ней нельзя и курсор не меняется.
-# Два виджета на одной карточке: sys сверху, disk под ним.
+# Три виджета на одной карточке: cpu, ram, disk — сверху вниз.
 
 [service:ThisHost]
 icon = "mdi:server"
 desc = "Этот хост"
 group = "Widgets"
-widget = "sys, disk"
+widget = "cpu, ram, disk"     # каждый следующий — под предыдущим
 
-[widget:sys]
-type = sysinfo
-tempmin = 20            # полосочка статуса: ниже — зелёная, выше tempmax — красная
+[widget:cpu]
+type = cpu
+fields = "cpu, cputemp, uptime"
+tempmin = 20            # шкала для температуры: ниже — зелёная, выше tempmax — красная
 tempmax = 90
 units = metric          # imperial переведёт температуру в °F (по умолчанию metric)
-fields = "cpu, cputemp, memory, uptime"
+
+[widget:ram]
+type = ram
+fields = "free, consumed, total"
+ramunits = bytes        # bytes — 1.5 GB (1000), bbytes — 1.4 GiB (1024)
 
 [widget:disk]
 type = disk
+name = "C:, D:"        # подпись на карточке: одна строка мельче подписей полей
 disk = "C:\, D:\"      # пути как есть; на linux — /, /mnt/data
 diskunits = bytes       # bytes — 1.5 GB (1000), bbytes — 1.4 GiB (1024)
 fields = "free, consumed, total"

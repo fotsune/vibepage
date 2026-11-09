@@ -238,6 +238,7 @@
         if (!value) return;
         value.textContent = field.value === null || field.value === undefined ? "—" : field.value;
         value.className = "widget-value tone-" + (field.tone || "idle");
+        if (field.tip) { value.dataset.tip = field.tip; } else { delete value.dataset.tip; }
       });
       paintBar(box, widget.bar);
       if (widget.ok) {

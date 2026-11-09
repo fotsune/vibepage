@@ -127,25 +127,29 @@ def _widget_view(name: str, site: Site) -> dict:
     """Скелет виджета: поля с подписями и, если кэш уже тёплый, значения."""
     widget = site.widgets.get(group_key(name))
     if widget is None:
-        return {"name": name, "title": name, "kind": "", "fields": [], "bar": None, "ok": False,
+        return {"name": name, "title": name, "kind": "", "caption": None, "fields": [], "bar": None, "ok": False,
                 "phase": "error", "error": "Widget is not declared.", "at": 0}
     spec_fields = widget_lib.fields_for(widget)
     state = widget_lib.peek_widget(widget)
     failed = bool(state) and not state.get("ok")   # ошибка уже известна — кресты, не старые цифры
     values = {}
     tones = {}
+    tips = {}
     if state and state.get("ok"):
         for field in state.get("fields") or []:
             values[field["key"]] = field.get("value")
             tones[field["key"]] = field.get("tone")
+            tips[field["key"]] = field.get("tip")
     return {
         "name": widget.name,
         "title": widget_lib.title_for(widget),
         "kind": widget.type,
+        "caption": widget_lib.caption_for(widget),
         "fields": [
             {"key": field["key"], "label": field["label"],
              "value": widget_lib.CROSS if failed else values.get(field["key"]),
-             "tone": "down" if failed else tones.get(field["key"], "idle")}
+             "tone": "down" if failed else tones.get(field["key"], "idle"),
+             "tip": None if failed else tips.get(field["key"])}
             for field in spec_fields
         ],
         # полосочка статуса: только у системных и дисковых, и только со свежими данными

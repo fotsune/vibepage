@@ -38,8 +38,10 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
 
+from . import thermal
+
 try:
-    import psutil           # нативный модуль: нужен sysinfo/disk, без него дашборд живёт
+    import psutil           # нативный модуль: нужен cpu/ram/disk, без него дашборд живёт
 except ImportError:        # pragma: no cover — зависит от окружения, не от кода
     psutil = None
 
@@ -53,6 +55,7 @@ MC_DEFAULT_PORT = 25565
 
 
 CROSS = "✕"                # значение поля, когда данных нет
+NO_TEMPERATURE = "No CPU temperature sensor"   # подсказка на прочерке вместо градусов
 
 
 class WidgetFailure(Exception):
@@ -623,11 +626,11 @@ class Watchtower(Spec):
 
 
 # --------------------------------------------------------------------------- #
-# сам хост: загрузка CPU, температура, память, аптайм
+# сам хост: cpu (загрузка, температура, аптайм) и ram
 # --------------------------------------------------------------------------- #
 
 def _psutil():
-    """Модуль psutil или внятная причина, почему sysinfo/disk не у дел."""
+    """Модуль psutil или внятная причина, почему cpu/ram/disk не у дел."""
     if psutil is None:
         raise WidgetFailure("Not installed: psutil")
     return psutil
@@ -644,29 +647,6 @@ def _cpu_percent() -> int:
         return int(round(module.cpu_percent(interval=None)))
     _CPU_SAMPLED = True
     return int(round(module.cpu_percent(interval=0.2)))
-
-
-TEMP_SENSORS = ("coretemp", "k10temp", "zenpower", "cpu_thermal", "soc_thermal", "acpitz")
-
-
-def cpu_temperature() -> float | None:
-    """Температура CPU в °C. None — датчика нет (так на Windows и в контейнере)."""
-    reader = getattr(_psutil(), "sensors_temperatures", None)
-    if reader is None:
-        return None
-    try:
-        sensors = reader()
-    except (OSError, RuntimeError, NotImplementedError):
-        return None
-    for name in TEMP_SENSORS:
-        entries = sensors.get(name) or []
-        for entry in entries:                       # «Package id 0» — температура всего CPU
-            if "package" in (entry.label or "").lower() and entry.current:
-                return float(entry.current)
-        values = [float(entry.current) for entry in entries if entry.current]
-        if values:
-            return sum(values) / len(values)
-    return None
 
 
 def _uptime_text(seconds) -> str:
@@ -702,51 +682,93 @@ def _temp_fraction(temperature, options: dict | None) -> float | None:
 IMPERIAL = ("imperial", "f", "fahrenheit")
 
 
-class SysInfo(Spec):
-    """Тот же хост, где живёт dashboard: CPU, температура, память, аптайм."""
+SEVERITY = {"good": 0, "idle": 0, "warn": 1, "bad": 2}
 
-    TITLE = "System"
-    FIELDS = (("cpu", "cpu"), ("cputemp", "temp"), ("memory", "memory"), ("uptime", "uptime"))
+
+def _worst(*tones: str) -> str:
+    """Самое тревожное из состояний: одна полоска, одно мнение."""
+    known = [tone for tone in tones if tone in SEVERITY]
+    return max(known, key=SEVERITY.get, default="good")
+
+
+def _temp_text(celsius, options: dict | None) -> str:
+    """65.0 → «65°C» или «149°F» — смотря что просят в units."""
+    if str((options or {}).get("units", "metric")).strip().lower() in IMPERIAL:
+        return f"{float(celsius) * 9 / 5 + 32:.0f}°F"
+    return f"{float(celsius):.0f}°C"
+
+
+def _binary(options: dict | None, key: str) -> bool:
+    """``diskUnits``/``ramUnits = bbytes`` — двоичные единицы (GiB), иначе GB."""
+    return str((options or {}).get(key, "")).strip().lower() == "bbytes"
+
+
+class Cpu(Spec):
+    """Процессор того хоста, где живёт dashboard: загрузка, температура, аптайм."""
+
+    TITLE = "CPU"
+    FIELDS = (("cpu", "cpu"), ("cputemp", "temp"), ("uptime", "uptime"))
     REQUIRED = ()
     OPTIONAL = ("tempmin", "tempmax", "units")
 
     def fetch(self, options: dict) -> dict:
-        module = _psutil()
         return {
             "cpu": _cpu_percent(),
-            "cputemp": cpu_temperature(),
-            "memory": int(round(module.virtual_memory().percent)),
-            "uptime": int(time.time() - module.boot_time()),
+            "cputemp": thermal.cpu_temperature(),
+            "uptime": int(time.time() - _psutil().boot_time()),
         }
-
-    def tone(self, key, value, options=None) -> str:
-        if key == "cputemp":
-            fraction = _temp_fraction(value, options)
-            return _level(fraction) if fraction is not None else "idle"
-        if key in ("cpu", "memory"):
-            return _level(value / 100) if value is not None else "idle"
-        return "idle"
 
     def show(self, key, value, options=None):
         if value is None:
             return None
         if key == "cputemp":
-            if str((options or {}).get("units", "metric")).strip().lower() in IMPERIAL:
-                return f"{float(value) * 9 / 5 + 32:.0f}°F"
-            return f"{float(value):.0f}°C"
-        if key in ("cpu", "memory"):
+            return _temp_text(value, options)
+        if key == "cpu":
             return f"{value}%"
         if key == "uptime":
             return _uptime_text(value)
         return value
 
+    def tone(self, key, value, options=None) -> str:
+        if key == "cputemp":
+            fraction = _temp_fraction(value, options)
+            return _level(fraction) if fraction is not None else "idle"
+        if key == "cpu":
+            return _level(value / 100) if value is not None else "idle"
+        return "idle"
+
     def bar(self, values, options=None):
-        # температура (если датчик есть) важнее загрузки: она и задаёт статус
-        fraction = _temp_fraction(values.get("cputemp"), options)
-        if fraction is not None:
-            return _bar(fraction)
-        cpu = values.get("cpu")
-        return _bar(cpu / 100) if cpu is not None else None
+        # длина полоски — загрузка CPU, а цвет — худшее из загрузки и температуры:
+        # горячий процессор видно и без ста процентов, а tempmin/tempmax задают шкалу
+        load = values.get("cpu")
+        fraction = load / 100 if load is not None else None
+        temperature = _temp_fraction(values.get("cputemp"), options)
+        levels = [_level(item) for item in (fraction, temperature) if item is not None]
+        return _bar(fraction, _worst(*levels) if levels else None)
+
+
+class Ram(Spec):
+    """Оперативная память хоста: свободно, занято, всего."""
+
+    TITLE = "RAM"
+    FIELDS = (("free", "free"), ("consumed", "used"), ("total", "total"))
+    REQUIRED = ()
+    OPTIONAL = ("ramunits",)
+
+    def fetch(self, options: dict) -> dict:
+        memory = _psutil().virtual_memory()
+        total = int(memory.total)
+        free = int(getattr(memory, "available", 0) or 0)
+        return {"free": free, "consumed": max(0, total - free), "total": total}
+
+    def show(self, key, value, options=None):
+        if value is None:
+            return None
+        return _bytes(value, _binary(options, "ramunits"))
+
+    def bar(self, values, options=None):
+        total = values.get("total") or 0
+        return _bar(values.get("consumed") / total) if total else None
 
 
 # --------------------------------------------------------------------------- #
@@ -790,7 +812,7 @@ class Disk(Spec):
     TITLE = "Disk"
     FIELDS = (("free", "free"), ("consumed", "used"), ("total", "total"))
     REQUIRED = ("disk",)
-    OPTIONAL = ("diskunits",)
+    OPTIONAL = ("diskunits", "name")        # name — подпись виджета, видна только на карточке
 
     def fetch(self, options: dict) -> dict:
         paths = disk_paths(options.get("disk"))
@@ -811,8 +833,7 @@ class Disk(Spec):
     def show(self, key, value, options=None):
         if value is None:
             return None
-        binary = str((options or {}).get("diskunits", "")).strip().lower() in BINARY_UNITS
-        return _bytes(value, binary)
+        return _bytes(value, _binary(options, "diskunits"))
 
     def bar(self, values, options=None):
         total = values.get("total") or 0
@@ -821,12 +842,16 @@ class Disk(Spec):
 
 REGISTRY = {type(spec).__name__.lower(): spec for spec in (
     Portainer(), AdGuard(), Npm(), Minecraft(), ChangeDetectionIo(), UptimeKuma(), YourSpotify(), Watchtower(),
-    SysInfo(), Disk(),
+    Cpu(), Ram(), Disk(),
 )}
+
+# sysinfo разделился на cpu и ram; старые имена в конфиге продолжают работать
+ALIASES = {"sysinfo": "cpu", "system": "cpu", "memory": "ram"}
 
 
 def type_spec(kind: str | None):
-    return REGISTRY.get((kind or "").strip().lower())
+    name = (kind or "").strip().lower()
+    return REGISTRY.get(ALIASES.get(name, name))
 
 
 def labels_for(spec) -> dict:
@@ -874,6 +899,13 @@ def title_for(widget) -> str:
     return spec.TITLE if spec else (widget.type or "widget")
 
 
+def caption_for(widget) -> str | None:
+    """``name = "C:"`` — подпись виджета на карточке; None, если не задана."""
+    raw = widget.options.get("name")
+    text = str(raw).strip() if raw is not None else ""
+    return text or None
+
+
 def validate(widget) -> list[str]:
     """Проверка секции ``[widget:…]`` на этапе загрузки конфига."""
     problems: list[str] = []
@@ -907,7 +939,7 @@ def _field_problems(widget, spec) -> list[str]:
 def _crossed(widget, spec) -> list[dict]:
     """Поля с крестами: старые цифры не выдаём за свежие."""
     labels = labels_for(spec)
-    return [{"key": key, "label": labels[key], "value": CROSS, "tone": "down"}
+    return [{"key": key, "label": labels[key], "value": CROSS, "tone": "down", "tip": None}
             for key in field_keys(widget, spec)]
 
 
@@ -923,7 +955,7 @@ def _sentence(text: str) -> str:
 def _failed(widget, spec, stamp: float, detail: str) -> dict:
     """Ошибка — полноправное состояние карточки: кресты и причина в подсказке."""
     return {"ok": False, "name": widget.name, "type": widget.type, "at": stamp,
-            "error": _sentence(detail),
+            "error": _sentence(detail), "caption": caption_for(widget),
             "fields": _crossed(widget, spec) if spec is not None else [],
             "bar": None}
 
@@ -952,13 +984,14 @@ def run_widget(widget) -> dict:
         value = values.get(key)
         fields.append({"key": key, "label": labels[key],
                        "value": spec.show(key, value, options),
-                       "tone": spec.tone(key, value, options)})
+                       "tone": spec.tone(key, value, options),
+                       "tip": NO_TEMPERATURE if key == "cputemp" and value is None else None})
     try:
         bar = spec.bar(values, options)
     except Exception:  # noqa: BLE001 — полосочка не имеет права ронять карточку
         bar = None
     return {"ok": True, "name": widget.name, "type": widget.type, "title": spec.TITLE,
-            "fields": fields, "bar": bar, "at": stamp}
+            "caption": caption_for(widget), "fields": fields, "bar": bar, "at": stamp}
 
 
 # --------------------------------------------------------------------------- #

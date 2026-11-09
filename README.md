@@ -54,12 +54,12 @@ python -m venv .venv
 ## Docker
 
 Готовые `Dockerfile` и `docker-compose.yml`: в образе нет ни компилятора, ни pip, ни кэшей —
-только Python, Flask, psutil (для виджетов `sysinfo` и `disk`) и код (~62 МБ). psutil не выпускает
+только Python, Flask, psutil (для виджетов `cpu`, `ram` и `disk`) и код (~62 МБ). psutil не выпускает
 musllinux-колёс, поэтому на alpine он собирается из исходников: `gcc`, `musl-dev` и `linux-headers`
 ставятся на время `pip install` и удаляются в том же слое — первая сборка идёт дольше, чем
-пересборка кода. Если psutil всё же нет в образе, дашборд работает, а `sysinfo`/`disk` показывают
+пересборка кода. Если psutil всё же нет в образе, дашборд работает, а `cpu`/`ram`/`disk` показывают
 ошибку «Not installed: psutil». В контейнере
-`sysinfo` показывает сам контейнер, а не хост: для цифр хоста нужен `--pid=host` и `/proc`
+`cpu` и `ram` показывают сам контейнер, а не хост: для цифр хоста нужен `--pid=host` и `/proc`
 внутри, для дисков — те пути, что смонтированы.
 
 ```sh
@@ -364,8 +364,9 @@ ping_timeout = 2               # секунд на попытку, по умол
 | `uptimekuma` | `/api/status-page[/heartbeat]/{slug}` | `url`, `slug` | `up`, `down`, `uptime`, `incident` |
 | `yourspotify` | `/spotify/{songs,time,different_artists}_per` | `url`, `key` (+`interval`) | `songs`, `time`, `artists` |
 | `watchtower` | `/v1/metrics` (prometheus-текст) | `url`, `key` | `containers_scanned`, `containers_updated`, `containers_failed` |
-| `sysinfo` | сам хост: psutil — CPU, температура, память, аптайм | нет (+`tempmin`, `tempmax`, `units`) | `cpu`, `cputemp`, `memory`, `uptime` |
-| `disk` | свободное место по путям | `disk` (+`diskunits`) | `free`, `consumed`, `total` |
+| `cpu` | сам хост: загрузка CPU, температура, аптайм | нет (+`tempmin`, `tempmax`, `units`) | `cpu`, `cputemp`, `uptime` |
+| `ram` | сам хост: оперативная память | нет (+`ramunits`) | `free`, `consumed`, `total` |
+| `disk` | свободное место по путям | `disk` (+`diskunits`, `name`) | `free`, `consumed`, `total` |
 
 `fields` перечисляет поля в том порядке, в каком они встанут в карточку, и может выбросить
 лишнее — строкой: `fields = "total, disabled, enabled"` даст «всего, выключено, включено».
@@ -383,30 +384,50 @@ ping_timeout = 2               # секунд на попытку, по умол
 icon = "mdi:server"
 desc = "Этот хост"
 group = "Group1"
-widget = "sys, disk"           # два виджета: sys сверху, disk под ним
+widget = "cpu, ram, disk"      # виджетов несколько: каждый следующий — под предыдущим
 
-[widget:sys]
-type = sysinfo
-tempmin = 20                   # полосочка: ниже — зелёная, выше tempmax — красная
+[widget:cpu]
+type = cpu
+fields = "cpu, cputemp, uptime"
+tempmin = 20                   # шкала температуры: ниже — зелёная, выше tempmax — красная
 tempmax = 90
 units = metric                 # metric (по умолчанию) или imperial — только для температуры
-fields = "cpu, cputemp, memory, uptime"
+
+[widget:ram]
+type = ram
+fields = "free, consumed, total"
+ramunits = bytes               # bytes — 1.5 GB (1000), bbytes — 1.4 GiB (1024)
 
 [widget:disk]
 type = disk
+name = "C:, D:"               # подпись виджета: одна строка мельче подписей полей
 disk = "C:\, D:\"              # пути как есть; на linux — /, /mnt/data, можно несколько
 diskunits = bytes              # bytes — 1.5 GB (1000), bbytes — 1.4 GiB (1024)
 fields = "free, consumed, total"
 ```
 
-`sysinfo` смотрит на тот же хост, где живёт dashboard (в контейнере — на контейнер);
-`cputemp` есть только там, где есть датчик: на linux — через psutil, на Windows поля
-температуры покажут прочерк. Несколько путей в `disk` складываются в одно число.
+`cpu`, `ram` и `disk` смотрят на тот же хост, где живёт dashboard (в контейнере — на
+контейнер), описаны в `hp/widgets.py`, `hp/thermal.py`. Старое имя `type = sysinfo`
+продолжает работать и означает `cpu` (поле `memory` ушло в `ram`). Несколько путей
+в `disk` складываются в одно число, `name` даёт виджету подпись — она нужна, когда на
+одной карточке два диска и надо их различить.
 
-У системных и дисковых виджетов снизу — тонкая полосочка во всю ширину виджета:
-у `sys` это температура между `tempmin` и `tempmax` (если датчика нет — загрузка CPU),
-у `disk` — заполненность. Цвет общий для всех: до 70% — зелёный, до 90% — жёлтый,
-дальше — красный; на ошибке полосочка исчезает вместе с цифрами.
+**Температура CPU** — единственная цифра, которой не хватает psutil на всех системах:
+
+* linux — `psutil.sensors_temperatures()` (hwmon: `coretemp`, `k10temp`, `zenpower`…),
+  затем `/sys/class/thermal/thermal_zone*/temp` и `/sys/class/hwmon/hwmon*/temp*_input`
+  напрямую — так датчик виден и в контейнере, если `/sys` смонтирован;
+* windows — только WMI: поставь и запусти [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)
+  (или OpenHardwareMonitor) хотя бы свёрнутым — он публикует `root/LibreHardwareMonitor`,
+  откуда берётся «CPU Package»/«Tctl/Tdie». Без него остаётся `MSAcpi_ThermalZoneTemperature`,
+  а он есть не на всех платах — тогда `cputemp` покажет прочерк, а не выдуманное число.
+  Опрос идёт через `powershell`, поэтому результат кэшируется на 15 секунд.
+
+У `cpu`, `ram` и `disk` снизу — тонкая полосочка во всю ширину виджета: у `cpu` её
+длина — загрузка, а цвет — худшее из загрузки и температуры по шкале `tempmin`…`tempmax`
+(датчика нет — смотрим только загрузку); у `ram` и `disk` — заполненность. Цвет общий
+для всех: до 70% — зелёный, до 90% — жёлтый, дальше — красный; на ошибке полосочка
+исчезает вместе с цифрами.
 
 Точка статуса: зелёная — сервис ответил быстрее 350 мс, жёлтая — ответил, но медленнее,
 красная — не ответил, серая — ещё не спрашивали. У полей четыре цвета значений: нейтральный,
@@ -425,7 +446,7 @@ fields = "free, consumed, total"
 Подсказки свои, а не браузерные: текст лежит в `data-tip`, всплывает через 90 мс
 (родная подсказка ждёт почти секунду), встаёт над элементом и не вылезает за край окна.
 Так же работают точка ping, кнопка второй ссылки, имена и подписи полей.
-Демо-карточки всех десяти типов лежат в `config/conf.d/widgets.toml`;
+Демо-карточки всех одиннадцати типов лежат в `config/conf.d/widgets.toml`;
 секреты там взяты из окружения, и без переменной карточка показывает ошибку конфига,
 а не ломает страницу.
 
@@ -448,7 +469,8 @@ GET / ──► чтение всех конфигов ──► сборка la
 app.py              Flask: маршруты /, /api/state, /icon/<name>, /healthz
 hp/config.py        парсер TOML-like и сборка модели (Site, Group, Service, System)
 hp/layout.py        столбцы, приоритеты, объединение групп, выбор link/alt
-hp/widgets.py       источники живого состояния: portainer, sysinfo, disk, пинг и кэш ответов
+hp/widgets.py       источники живого состояния: portainer, cpu, ram, disk, пинг и кэш ответов
+hp/thermal.py       температура CPU: hwmon и sysfs на linux, WMI и LHM на Windows
 hp/icons.py         иконки: файлы, mdi/sdi через Iconify, /icon/…, плейсхолдер
 hp/colors.py        палитра Dracula, разбор имён/hex и автоподбор акцента группы
 templates/          index.html, error.html

@@ -700,6 +700,21 @@ body.no-header .board { padding-top: clamp(22px, 2.8vw, 36px); }
   transition: opacity 0.2s ease;
 }
 
+/* подпись виджета (``name = "System"``): одна строка, мельче подписей полей */
+.widget-caption {
+  font-size: 9px;
+  line-height: 1.25;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--muted);
+  opacity: 0.85;
+  margin: 0 0 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .widget-fields {
   display: grid;
   grid-auto-flow: column;
