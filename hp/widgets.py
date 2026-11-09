@@ -9,11 +9,16 @@
 * ``FIELDS``   — пары (ключ, подпись), порядок по умолчанию;
 * ``REQUIRED`` / ``OPTIONAL`` — ключи секции ``[widget:…]``;
 * ``fetch(options)`` возвращает dict «ключ → значение»;
-* ``tone(key, value)`` выбирает цвет значения: good / bad / warn / idle;
-* ``show(key, value)`` превращает число в текст (проценты, часы, «1 / 8»).
+* ``tone(key, value, options)`` выбирает цвет значения: good / bad / warn / idle;
+* ``show(key, value, options)`` превращает число в текст (проценты, байты, часы);
+* ``bar(values, options)`` — доля заполнения для полосочки, если она нужна.
 
-Ключ ``fields = ["total", "enabled"]`` в секции виджета задаёт, какие поля
-показывать и в каком порядке (не больше ``MAX_FIELDS``).
+Ключ ``fields = "total, enabled"`` в секции виджета задаёт, какие поля
+показывать и в каком порядке (не больше ``MAX_FIELDS``). Старая запись
+``fields = ["total", "enabled"]`` понимается точно так же.
+
+Системные виджеты (``sysinfo``, ``disk``) несут ещё и полосочку статуса:
+``Spec.bar()`` возвращает долю заполнения 0…1, её рисует страница.
 """
 
 from __future__ import annotations
@@ -33,12 +38,14 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
 
+import psutil
+
 PING_OK_MS = 350          # быстрее — зелёный, медленнее — жёлтый
 PING_TTL = 5.0
 WIDGET_TTL = 10.0
 DEFAULT_TIMEOUT = 4.0
 MAX_WORKERS = 8
-MAX_FIELDS = 3            # сколько полей влезает в карточку
+MAX_FIELDS = 4            # сколько полей влезает в карточку
 MC_DEFAULT_PORT = 25565
 
 
@@ -138,10 +145,10 @@ def _duration(ms) -> str:
     except (TypeError, ValueError):
         return "—"
     if seconds >= 3600:
-        return f"{seconds / 3600:.0f} ч"
+        return f"{seconds / 3600:.0f} h"
     if seconds >= 60:
-        return f"{seconds / 60:.0f} мин"
-    return f"{seconds:.0f} с"
+        return f"{seconds / 60:.0f} min"
+    return f"{seconds:.0f} s"
 
 
 def _number(value) -> int:
@@ -162,11 +169,34 @@ class Spec:
     def fetch(self, options: dict) -> dict:
         raise NotImplementedError
 
-    def tone(self, key: str, value) -> str:
+    def tone(self, key: str, value, options: dict | None = None) -> str:
         return "idle"
 
-    def show(self, key: str, value):
+    def show(self, key: str, value, options: dict | None = None):
         return value
+
+    def bar(self, values: dict, options: dict | None = None) -> dict | None:
+        """Полосочка статуса: ``{"value": 0…1, "tone": …}`` или None."""
+        return None
+
+
+def _level(fraction: float) -> str:
+    """0.7 — уже жёлто, 0.9 — красный: одна шкала на все полосочки."""
+    if fraction >= 0.9:
+        return "bad"
+    if fraction >= 0.7:
+        return "warn"
+    return "good"
+
+
+def _bar(fraction, tone: str | None = None) -> dict | None:
+    if fraction is None:
+        return None
+    try:
+        value = max(0.0, min(1.0, float(fraction)))
+    except (TypeError, ValueError):
+        return None
+    return {"value": round(value, 4), "tone": tone or _level(value)}
 
 
 # --------------------------------------------------------------------------- #
@@ -177,7 +207,7 @@ class Portainer(Spec):
     """Счётчики контейнеров: запущено / остановлено / всего."""
 
     TITLE = "Portainer"
-    FIELDS = (("running", "запущено"), ("stopped", "остановлено"), ("total", "всего"))
+    FIELDS = (("running", "running"), ("stopped", "stopped"), ("total", "total"))
     REQUIRED = ("url", "key")
     OPTIONAL = ("env", "timeout", "verify_tls")
 
@@ -197,7 +227,7 @@ class Portainer(Spec):
         total = len(containers)
         return {"running": running, "stopped": total - running, "total": total}
 
-    def tone(self, key: str, value) -> str:
+    def tone(self, key: str, value, options: dict | None = None) -> str:
         if key == "running":
             return "good" if value else "idle"
         if key == "stopped":
@@ -216,7 +246,7 @@ class AdGuard(Spec):
     """Запросы DNS: сколько всего, сколько заблокировано, сколько подменено."""
 
     TITLE = "AdGuard Home"
-    FIELDS = (("queries", "запросы"), ("blocked", "блок"), ("filtered", "фильтр"), ("latency", "мс"))
+    FIELDS = (("queries", "queries"), ("blocked", "blocked"), ("filtered", "filtered"), ("latency", "ms"))
     REQUIRED = ("url",)
     OPTIONAL = ("username", "password", "timeout", "verify_tls")
 
@@ -238,15 +268,15 @@ class AdGuard(Spec):
             "latency": int(round(float(stats.get("avg_processing_time") or 0) * 1000)),
         }
 
-    def tone(self, key: str, value) -> str:
+    def tone(self, key: str, value, options: dict | None = None) -> str:
         if key == "blocked":
             return "warn" if value else "idle"
         if key == "latency":
             return "good" if value is not None and value <= 20 else "warn"
         return "idle"
 
-    def show(self, key: str, value):
-        return f"{value} мс" if key == "latency" and value is not None else value
+    def show(self, key: str, value, options: dict | None = None):
+        return f"{value} ms" if key == "latency" and value is not None else value
 
 
 # --------------------------------------------------------------------------- #
@@ -261,7 +291,7 @@ class Npm(Spec):
     """Прокси-хосты: включено / выключено / всего."""
 
     TITLE = "Nginx Proxy Manager"
-    FIELDS = (("enabled", "включено"), ("disabled", "выключено"), ("total", "всего"))
+    FIELDS = (("enabled", "enabled"), ("disabled", "disabled"), ("total", "total"))
     REQUIRED = ("url", "username", "password")
     OPTIONAL = ("timeout", "verify_tls")
 
@@ -295,7 +325,7 @@ class Npm(Spec):
         enabled = sum(1 for host in hosts if host.get("enabled"))
         return {"enabled": enabled, "disabled": len(hosts) - enabled, "total": len(hosts)}
 
-    def tone(self, key: str, value) -> str:
+    def tone(self, key: str, value, options: dict | None = None) -> str:
         if key == "enabled":
             return "good" if value else "idle"
         if key == "disabled":
@@ -389,7 +419,7 @@ class Minecraft(Spec):
     """Жив ли сервер: статус, игроки, версия."""
 
     TITLE = "Minecraft"
-    FIELDS = (("status", "статус"), ("players", "игроки"), ("version", "версия"))
+    FIELDS = (("status", "status"), ("players", "players"), ("version", "version"))
     REQUIRED = ("url",)
     OPTIONAL = ("timeout",)
 
@@ -397,7 +427,7 @@ class Minecraft(Spec):
         return minecraft_status(str(options.get("url", "")),
                                 timeout=float(options.get("timeout", DEFAULT_TIMEOUT)))
 
-    def tone(self, key: str, value) -> str:
+    def tone(self, key: str, value, options: dict | None = None) -> str:
         if key == "status":
             return "good" if value == "Up" else "bad"
         return "idle"
@@ -411,7 +441,7 @@ class ChangeDetectionIo(Spec):
     """Наблюдения за страницами: сколько изменилось и сколько всего."""
 
     TITLE = "changedetection.io"
-    FIELDS = (("diffsDetected", "изменения"), ("totalObserved", "наблюдения"))
+    FIELDS = (("diffsDetected", "changes"), ("totalObserved", "watches"))
     REQUIRED = ("url", "key")
     OPTIONAL = ("timeout", "verify_tls")
 
@@ -428,7 +458,7 @@ class ChangeDetectionIo(Spec):
                     if _number(watch.get("last_changed")) > 0 and not watch.get("viewed"))
         return {"diffsDetected": diffs, "totalObserved": len(watches)}
 
-    def tone(self, key: str, value) -> str:
+    def tone(self, key: str, value, options: dict | None = None) -> str:
         if key == "diffsDetected":
             return "warn" if value else "good"
         return "idle"
@@ -456,7 +486,7 @@ class UptimeKuma(Spec):
     """Страница статуса: живые мониторы, лежащие, аптайм и текущая авария."""
 
     TITLE = "Uptime Kuma"
-    FIELDS = (("up", "жив"), ("down", "лежит"), ("uptime", "аптайм"), ("incident", "авария"))
+    FIELDS = (("up", "up"), ("down", "down"), ("uptime", "uptime"), ("incident", "since"))
     REQUIRED = ("url", "slug")
     OPTIONAL = ("timeout", "verify_tls")
 
@@ -483,7 +513,7 @@ class UptimeKuma(Spec):
         started = incidents[0].get("createdDate") if incidents else (page.get("incident") or {}).get("createdDate")
         return {"up": up, "down": down, "uptime": round(uptime, 1), "incident": _hours_since(started)}
 
-    def tone(self, key: str, value) -> str:
+    def tone(self, key: str, value, options: dict | None = None) -> str:
         if key == "up":
             return "good" if value else "idle"
         if key == "down":
@@ -494,11 +524,11 @@ class UptimeKuma(Spec):
             return "bad" if value is not None else "idle"
         return "idle"
 
-    def show(self, key: str, value):
+    def show(self, key: str, value, options: dict | None = None):
         if key == "uptime" and value is not None:
             return f"{value:.1f}%"
         if key == "incident" and value is not None:
-            return f"{value} ч"
+            return f"{value} h"
         return value
 
 
@@ -523,7 +553,7 @@ class YourSpotify(Spec):
     """Что слушал: треки, время и разные артисты за интервал."""
 
     TITLE = "Your Spotify"
-    FIELDS = (("songs", "треки"), ("time", "время"), ("artists", "артисты"))
+    FIELDS = (("songs", "tracks"), ("time", "time"), ("artists", "artists"))
     REQUIRED = ("url", "key")
     OPTIONAL = ("interval", "timeout", "verify_tls")
 
@@ -547,7 +577,7 @@ class YourSpotify(Spec):
             "artists": len(((artists[0] if artists else {}).get("artists") or [])),
         }
 
-    def show(self, key: str, value):
+    def show(self, key: str, value, options: dict | None = None):
         return _duration(value) if key == "time" else value
 
 
@@ -562,8 +592,8 @@ class Watchtower(Spec):
     """Последнее сканирование: сколько контейнеров проверено, обновлено, сломалось."""
 
     TITLE = "Watchtower"
-    FIELDS = (("containers_scanned", "проверено"), ("containers_updated", "обновлено"),
-              ("containers_failed", "ошибки"))
+    FIELDS = (("containers_scanned", "scanned"), ("containers_updated", "updated"),
+              ("containers_failed", "failed"))
     REQUIRED = ("url", "key")
     OPTIONAL = ("timeout", "verify_tls")
 
@@ -581,7 +611,7 @@ class Watchtower(Spec):
             raise WidgetFailure("No watchtower_* in /v1/metrics — is the API enabled?")
         return {key: int(metrics.get(key, 0)) for key, _label in self.FIELDS}
 
-    def tone(self, key: str, value) -> str:
+    def tone(self, key: str, value, options: dict | None = None) -> str:
         if key == "containers_updated":
             return "good" if value else "idle"
         if key == "containers_failed":
@@ -589,8 +619,196 @@ class Watchtower(Spec):
         return "idle"
 
 
+# --------------------------------------------------------------------------- #
+# сам хост: загрузка CPU, температура, память, аптайм
+# --------------------------------------------------------------------------- #
+
+_CPU_SAMPLED = False      # первый cpu_percent(interval=None) всегда возвращает 0
+
+
+def _cpu_percent() -> int:
+    """Загрузка CPU в процентах; первый замер за жизнь процесса — с паузой."""
+    global _CPU_SAMPLED
+    if _CPU_SAMPLED:
+        return int(round(psutil.cpu_percent(interval=None)))
+    _CPU_SAMPLED = True
+    return int(round(psutil.cpu_percent(interval=0.2)))
+
+
+TEMP_SENSORS = ("coretemp", "k10temp", "zenpower", "cpu_thermal", "soc_thermal", "acpitz")
+
+
+def cpu_temperature() -> float | None:
+    """Температура CPU в °C. None — датчика нет (так на Windows и в контейнере)."""
+    reader = getattr(psutil, "sensors_temperatures", None)
+    if reader is None:
+        return None
+    try:
+        sensors = reader()
+    except (OSError, RuntimeError, NotImplementedError):
+        return None
+    for name in TEMP_SENSORS:
+        entries = sensors.get(name) or []
+        for entry in entries:                       # «Package id 0» — температура всего CPU
+            if "package" in (entry.label or "").lower() and entry.current:
+                return float(entry.current)
+        values = [float(entry.current) for entry in entries if entry.current]
+        if values:
+            return sum(values) / len(values)
+    return None
+
+
+def _uptime_text(seconds) -> str:
+    """138600 → «1d 14h»: в карточку лезет только короткая запись."""
+    minutes = int(max(0.0, float(seconds)) // 60)
+    days, rest = divmod(minutes, 1440)
+    hours, minutes = divmod(rest, 60)
+    if days:
+        return f"{days}d {hours}h"
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
+
+
+def _num(value, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _temp_fraction(temperature, options: dict | None) -> float | None:
+    """Где температура между tempmin и tempmax: 0 — холодно, 1 — на пределе."""
+    if temperature is None:
+        return None
+    low = _num((options or {}).get("tempmin"), 0.0)
+    high = _num((options or {}).get("tempmax"), 100.0)
+    if high <= low:
+        return None
+    return (float(temperature) - low) / (high - low)
+
+
+IMPERIAL = ("imperial", "f", "fahrenheit")
+
+
+class SysInfo(Spec):
+    """Тот же хост, где живёт dashboard: CPU, температура, память, аптайм."""
+
+    TITLE = "System"
+    FIELDS = (("cpu", "cpu"), ("cputemp", "temp"), ("memory", "memory"), ("uptime", "uptime"))
+    REQUIRED = ()
+    OPTIONAL = ("tempmin", "tempmax", "units")
+
+    def fetch(self, options: dict) -> dict:
+        return {
+            "cpu": _cpu_percent(),
+            "cputemp": cpu_temperature(),
+            "memory": int(round(psutil.virtual_memory().percent)),
+            "uptime": int(time.time() - psutil.boot_time()),
+        }
+
+    def tone(self, key, value, options=None) -> str:
+        if key == "cputemp":
+            fraction = _temp_fraction(value, options)
+            return _level(fraction) if fraction is not None else "idle"
+        if key in ("cpu", "memory"):
+            return _level(value / 100) if value is not None else "idle"
+        return "idle"
+
+    def show(self, key, value, options=None):
+        if value is None:
+            return None
+        if key == "cputemp":
+            if str((options or {}).get("units", "metric")).strip().lower() in IMPERIAL:
+                return f"{float(value) * 9 / 5 + 32:.0f}°F"
+            return f"{float(value):.0f}°C"
+        if key in ("cpu", "memory"):
+            return f"{value}%"
+        if key == "uptime":
+            return _uptime_text(value)
+        return value
+
+    def bar(self, values, options=None):
+        # температура (если датчик есть) важнее загрузки: она и задаёт статус
+        fraction = _temp_fraction(values.get("cputemp"), options)
+        if fraction is not None:
+            return _bar(fraction)
+        cpu = values.get("cpu")
+        return _bar(cpu / 100) if cpu is not None else None
+
+
+# --------------------------------------------------------------------------- #
+# диски: сколько занято на указанных путях
+# --------------------------------------------------------------------------- #
+
+BINARY_UNITS = ("bbytes", "binary", "ibytes")
+
+
+def _bytes(value, binary: bool = False) -> str:
+    """208291381248 → «208 GB» (bytes, 1000) или «194 GiB» (bbytes, 1024)."""
+    step = 1024.0 if binary else 1000.0
+    units = (("B", "KiB", "MiB", "GiB", "TiB", "PiB") if binary
+             else ("B", "KB", "MB", "GB", "TB", "PB"))
+    amount = float(value)
+    index = 0
+    while amount >= step and index < len(units) - 1:
+        amount /= step
+        index += 1
+    if index == 0:
+        return f"{amount:.0f} B"
+    if amount >= 100:
+        return f"{amount:.0f} {units[index]}"
+    return f"{amount:.1f} {units[index]}"
+
+
+def disk_paths(raw) -> list[str]:
+    """``disk = "C:\\, D:\\"`` → ``["C:\\", "D:\\"]``; список тоже понимается."""
+    items = raw if isinstance(raw, list) else re.split(r"[,;]", str(raw or ""))
+    paths: list[str] = []
+    for item in items:
+        path = str(item).strip().strip("'\"")
+        if path and path not in paths:
+            paths.append(path)
+    return paths
+
+
+class Disk(Spec):
+    """Занятое место по указанным дискам; несколько путей складываются в одно."""
+
+    TITLE = "Disk"
+    FIELDS = (("free", "free"), ("consumed", "used"), ("total", "total"))
+    REQUIRED = ("disk",)
+    OPTIONAL = ("diskunits",)
+
+    def fetch(self, options: dict) -> dict:
+        paths = disk_paths(options.get("disk"))
+        if not paths:
+            raise WidgetFailure("Not configured: missing disk")
+        free = consumed = total = 0
+        for path in paths:
+            try:
+                usage = psutil.disk_usage(path)
+            except (OSError, ValueError) as error:
+                raise WidgetFailure(f"Cannot read {path}") from error
+            free += usage.free
+            consumed += usage.used
+            total += usage.total
+        return {"free": free, "consumed": consumed, "total": total}
+
+    def show(self, key, value, options=None):
+        if value is None:
+            return None
+        binary = str((options or {}).get("diskunits", "")).strip().lower() in BINARY_UNITS
+        return _bytes(value, binary)
+
+    def bar(self, values, options=None):
+        total = values.get("total") or 0
+        return _bar(values.get("consumed") / total) if total else None
+
+
 REGISTRY = {type(spec).__name__.lower(): spec for spec in (
     Portainer(), AdGuard(), Npm(), Minecraft(), ChangeDetectionIo(), UptimeKuma(), YourSpotify(), Watchtower(),
+    SysInfo(), Disk(),
 )}
 
 
@@ -602,21 +820,30 @@ def labels_for(spec) -> dict:
     return {key: label for key, label in spec.FIELDS}
 
 
+FIELD_SPLIT = re.compile(r"[,;\s]+")
+
+
+def raw_fields(widget) -> list[str]:
+    """``fields = "cpu, memory"`` и старое ``fields = ["cpu", "memory"]`` — одно и то же."""
+    raw = widget.options.get("fields")
+    if raw in (None, ""):
+        return []
+    items = raw if isinstance(raw, list) else FIELD_SPLIT.split(str(raw))
+    keys: list[str] = []
+    for item in items:
+        key = str(item).strip().strip("\"'")
+        if key and key not in keys:
+            keys.append(key)
+    return keys
+
+
 def field_keys(widget, spec=None) -> list[str]:
-    """Порядок полей: из конфига (fields = […]) или как объявлено в типе."""
+    """Порядок полей: из конфига (fields = "а, б") или как объявлено в типе."""
     spec = spec or type_spec(widget.type)
     if spec is None:
         return []
     known = [key for key, _label in spec.FIELDS]
-    raw = widget.options.get("fields")
-    if raw in (None, ""):
-        return known[:MAX_FIELDS]
-    items = raw if isinstance(raw, list) else str(raw).replace(",", " ").split()
-    keys: list[str] = []
-    for item in items:
-        key = str(item).strip().strip("\"'")
-        if key in known and key not in keys:
-            keys.append(key)
+    keys = [key for key in raw_fields(widget) if key in known]
     return (keys or known)[:MAX_FIELDS]
 
 
@@ -631,7 +858,7 @@ def fields_for(widget) -> list[dict]:
 
 def title_for(widget) -> str:
     spec = type_spec(widget.type)
-    return spec.TITLE if spec else (widget.type or "виджет")
+    return spec.TITLE if spec else (widget.type or "widget")
 
 
 def validate(widget) -> list[str]:
@@ -654,12 +881,8 @@ def validate(widget) -> list[str]:
 
 def _field_problems(widget, spec) -> list[str]:
     """Понятная ошибка, если в fields опечатка в имени поля."""
-    raw = widget.options.get("fields")
-    if raw in (None, ""):
-        return []
     known = [key for key, _label in spec.FIELDS]
-    items = raw if isinstance(raw, list) else str(raw).replace(",", " ").split()
-    requested = [str(item).strip().strip("\"'") for item in items if str(item).strip()]
+    requested = raw_fields(widget)
     problems: list[str] = []
     unknown = [key for key in requested if key not in known]
     if unknown:
@@ -686,9 +909,10 @@ def _sentence(text: str) -> str:
 
 def _failed(widget, spec, stamp: float, detail: str) -> dict:
     """Ошибка — полноправное состояние карточки: кресты и причина в подсказке."""
-    return {"ok": False, "type": widget.type, "at": stamp,
+    return {"ok": False, "name": widget.name, "type": widget.type, "at": stamp,
             "error": _sentence(detail),
-            "fields": _crossed(widget, spec) if spec is not None else []}
+            "fields": _crossed(widget, spec) if spec is not None else [],
+            "bar": None}
 
 
 def run_widget(widget) -> dict:
@@ -709,12 +933,19 @@ def run_widget(widget) -> dict:
     if not isinstance(values, dict):
         return _failed(widget, spec, stamp, "Widget returned no data")
     labels = labels_for(spec)
+    options = widget.options
     fields = []
     for key in field_keys(widget, spec):
         value = values.get(key)
-        fields.append({"key": key, "label": labels[key], "value": spec.show(key, value),
-                       "tone": spec.tone(key, value)})
-    return {"ok": True, "type": widget.type, "title": spec.TITLE, "fields": fields, "at": stamp}
+        fields.append({"key": key, "label": labels[key],
+                       "value": spec.show(key, value, options),
+                       "tone": spec.tone(key, value, options)})
+    try:
+        bar = spec.bar(values, options)
+    except Exception:  # noqa: BLE001 — полосочка не имеет права ронять карточку
+        bar = None
+    return {"ok": True, "name": widget.name, "type": widget.type, "title": spec.TITLE,
+            "fields": fields, "bar": bar, "at": stamp}
 
 
 # --------------------------------------------------------------------------- #
@@ -757,7 +988,7 @@ def ping(target: str, timeout: float = 2.0) -> dict:
         with socket.create_connection((host, port), timeout=timeout):
             ms = int((time.perf_counter() - started) * 1000)
     except (OSError, ValueError) as error:
-        return {"state": "down", "ms": None, "target": f"{host}:{port}", "error": str(error) or "не отвечает"}
+        return {"state": "down", "ms": None, "target": f"{host}:{port}", "error": str(error) or "No response"}
     return {"state": "ok" if ms <= PING_OK_MS else "slow", "ms": ms, "target": f"{host}:{port}"}
 
 
@@ -824,23 +1055,30 @@ def card_identity(service, group_name: str | None = None) -> str:
     return f"{group_name or service.group}::{service.name}"
 
 
-def _plan(site) -> dict[str, dict[str, tuple]]:
-    """Что и по каким ключам кэша нужно для каждой карточки."""
-    plan: dict[str, dict[str, tuple]] = {}
+def _plan(site) -> dict[str, dict]:
+    """Что и по каким ключам кэша нужно для каждой карточки.
+
+    У карточки бывает несколько виджетов (``widget = "один, другой"``):
+    каждый живёт своим ключом кэша и рисуется под предыдущим.
+    """
+    plan: dict[str, dict] = {}
     for service in site.services:
-        item: dict[str, tuple] = {}
+        ping_item = None
+        widgets: list[tuple] = []          # (ключ кэша, чем обновлять, ttl, имя)
         if service.ping:
             timeout = float(service.ping_timeout or 2.0)
-            key = f"ping|{service.ping}|{timeout}"
-            item["ping"] = (key, lambda s=service: ping(s.ping, timeout), PING_TTL)
-        if service.widget:
-            widget = site.widgets.get(service.widget.casefold())
-            if widget is not None:
-                key = f"widget|{widget.name.casefold()}"
-                item["widget"] = (key, lambda w=widget: run_widget(w), WIDGET_TTL)
-        if item:
+            ping_item = (f"ping|{service.ping}|{timeout}",
+                         lambda s=service: ping(s.ping, timeout), PING_TTL)
+        for name in service.widgets:
+            widget = site.widgets.get(name.casefold())
+            if widget is None:
+                continue
+            widgets.append((f"widget|{widget.name.casefold()}",
+                            lambda w=widget: run_widget(w), WIDGET_TTL, widget.name))
+        if ping_item or widgets:
             group = site.groups.get(service.group_key)
-            plan[card_identity(service, group.name if group else None)] = item
+            plan[card_identity(service, group.name if group else None)] = {
+                "ping": ping_item, "widgets": widgets}
     return plan
 
 
@@ -850,7 +1088,10 @@ def snapshot(site, online: bool = True) -> dict:
     if online:
         wanted: dict[str, tuple] = {}
         for item in plan.values():
-            for key, producer, ttl in item.values():
+            if item["ping"]:
+                key, producer, ttl = item["ping"]
+                wanted.setdefault(key, (producer, ttl))
+            for key, producer, ttl, _name in item["widgets"]:
                 wanted.setdefault(key, (producer, ttl))
         stale = [key for key in wanted if (_peek(key) is None or _peek(key).expires <= time.monotonic())]
         if stale:
@@ -859,12 +1100,16 @@ def snapshot(site, online: bool = True) -> dict:
     cards: dict[str, dict] = {}
     for identity, item in plan.items():
         card: dict = {}
-        for kind, (key, _producer, _ttl) in item.items():
-            entry = _peek(key)
+        if item["ping"]:
+            entry = _peek(item["ping"][0])
             if entry is not None:
                 # пинг отдаём без адреса: клиент не должен знать, куда мы стучимся
-                card[kind] = wire_ping(entry.value) if kind == "ping" else entry.value
-                card[f"{kind}_at"] = round(entry.at, 3)
+                card["ping"] = wire_ping(entry.value)
+                card["ping_at"] = round(entry.at, 3)
+        live = [dict(entry.value) for entry in (_peek(key) for key, _p, _t, _n in item["widgets"])
+                if entry is not None]
+        if live:
+            card["widgets"] = live
         if card:                      # карточка без данных не занимает места
             cards[identity] = card
     return {"cards": cards, "poll": site.system.poll, "ts": round(time.time(), 3)}

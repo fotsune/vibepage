@@ -86,10 +86,9 @@
         </h2>
         <div class="cards">
           {% for service in group.services %}
-          <article class="card {% if service.url_alt %}card-with-alt{% endif %}{% if service.widget %} card-with-widget{% endif %}" data-search="{{ (service.name ~ ' ' ~ service.desc ~ ' ' ~ group.name)|lower }}" data-key="{{ service.key }}" style="--i: {{ loop.index0 }}">
-            <a class="card-link" href="{{ service.url }}"
-               data-main="{{ service.href_main }}" data-alt="{{ service.href_alt }}"
-               {% if service.new_page %}target="_blank" rel="noopener noreferrer"{% endif %}>
+          {# без link и alt карточка никуда не ведёт: <a> без href не кликается и не меняет курсор #}
+          <article class="card {% if service.url_alt %}card-with-alt{% endif %}{% if service.widgets %} card-with-widget{% endif %}{% if not service.url %} card-static{% endif %}" data-search="{{ (service.name ~ ' ' ~ service.desc ~ ' ' ~ group.name)|lower }}" data-key="{{ service.key }}" style="--i: {{ loop.index0 }}">
+            <a class="card-link"{% if service.url %} href="{{ service.url }}" data-main="{{ service.href_main }}" data-alt="{{ service.href_alt }}"{% if service.new_page %} target="_blank" rel="noopener noreferrer"{% endif %}{% endif %}>
               <span class="card-icon"{% if service.icon_color %} style="--icon-color: {{ service.icon_color }}"{% endif %}>
                 {% if service.icon and service.icon.svg %}{{ service.icon.svg|safe }}
                 {% elif service.icon %}<img src="{{ service.icon.url }}" alt="" loading="lazy" data-fallback="{{ service.initial }}">
@@ -114,18 +113,21 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 5.5h9v9"/><path d="M18.5 5.5 8 16"/><path d="M6 9.5H4.8a.8.8 0 0 0-.8.8v8.9a.8.8 0 0 0 .8.8h8.9a.8.8 0 0 0 .8-.8V19"/></svg>
             </a>
             {% endif %}
-            {% if service.widget %}
-            <div class="card-widget" data-widget="{{ service.widget.name }}" data-phase="{{ service.widget.phase }}"{% if service.widget.phase == "error" and service.widget.error %} data-tip="{{ service.widget.error }}"{% endif %}>
-              <div class="widget-fields">
-                {% for field in service.widget.fields %}
+            {% for widget in service.widgets %}
+            <div class="card-widget" data-widget="{{ widget.name }}" data-phase="{{ widget.phase }}"{% if widget.phase == "error" and widget.error %} data-tip="{{ widget.error }}"{% endif %}>
+              <div class="widget-fields" data-count="{{ widget.fields|length }}">
+                {% for field in widget.fields %}
                 <div class="widget-field" data-field="{{ field.key }}">
                   <span class="widget-value tone-{{ field.tone }}">{{ field.value if field.value is not none else "—" }}</span>
                   <span class="widget-label" data-tip="{{ field.label }}">{{ field.label }}</span>
                 </div>
                 {% endfor %}
               </div>
+              {% if widget.bar %}
+              <div class="widget-bar tone-{{ widget.bar.tone }}" aria-hidden="true"><span style="width: {{ (widget.bar.value * 100)|round(1) }}%"></span></div>
+              {% endif %}
             </div>
-            {% endif %}
+            {% endfor %}
           </article>
           {% endfor %}
           {% if not group.services %}<p class="panel-empty">здесь пока пусто</p>{% endif %}

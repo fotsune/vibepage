@@ -4,11 +4,15 @@
 # готовые числа на /api/state; клиент раз в [system] poll секунд обновляет
 # нарисованное.
 #
-# Ключ fields = [...] задаёт, какие поля показывать и в каком порядке:
-#   fields = ["enabled", "disabled", "total"]   → включено, выключено, всего
-#   fields = ["total", "disabled", "enabled"]   → всего, выключено, включено
-# Без fields поля идут в порядке типа; в карточку влезает не больше трёх.
-# Если в fields перечислено больше — берутся первые три по порядку.
+# Ключ fields задаёт, какие поля показывать и в каком порядке — строкой:
+#   fields = "enabled, disabled, total"   → включено, выключено, всего
+#   fields = "total, disabled, enabled"   → всего, выключено, включено
+# Старая запись списком (fields = ["enabled", "disabled", "total"]) понимается
+# точно так же. Без fields поля идут в порядке типа; в карточку влезает
+# не больше четырёх — лишние отбрасываются с начала списка.
+#
+# На карточке может быть несколько виджетов: widget = "имя, другое имя" —
+# каждый следующий рисуется под предыдущим.
 
 [group:Widgets]
 priority = 5
@@ -29,7 +33,7 @@ type = "portainer"
 url = "https://192.168.0.112:9000"
 env = 1                         # номер окружения (endpoint) в Portainer
 key = "${PORTAINER_KEY}"        # секрет берётся из config/.env, а не из репозитория
-fields = ["running", "stopped", "total"]
+fields = "running, stopped, total"
 
 # ─── AdGuard Home: DNS и блокировка рекламы ──────────────────────
 
@@ -46,7 +50,7 @@ type = "adguard"
 url = "http://192.168.0.112:59991"
 username = "${ADGUARD_USERNAME}"       # секреты — в config/.env, не в git
 password = "${ADGUARD_PASSWORD}"
-fields = ["queries", "blocked", "filtered"]
+fields = "queries, blocked, filtered"
 
 # ─── Nginx Proxy Manager: прокси-хосты ───────────────────────────
 
@@ -63,7 +67,7 @@ type = "npm"
 url = "http://192.168.0.112:59990"
 username = "${NPM_USERNAME}"
 password = "${NPM_PASSWORD}"
-fields = ["enabled", "disabled", "total"]
+fields = "enabled, disabled, total"
 
 # ─── Minecraft: жив ли сервер ───────────────────────────────────
 
@@ -78,7 +82,7 @@ ping = "192.168.0.11:25565"
 [widget:minecraft]
 type = "minecraft"
 url = "udp://192.168.0.11:25565"     # host:port или udp://host:port
-fields = ["players", "version", "status"]
+fields = "players, version, status"
 
 # ─── changedetection.io: наблюдения за страницами ────────────────
 
@@ -94,7 +98,7 @@ ping = "192.168.0.112:59992"
 type = "changedetectionio"
 url = "http://192.168.0.112:59992"
 key = "${CHANGEDETECTION_KEY}"   # API-ключ из настроек changedetection.io
-fields = ["diffsDetected", "totalObserved"]
+fields = "diffsDetected, totalObserved"
 
 # ─── Uptime Kuma: страница статуса ───────────────────────────────
 
@@ -110,7 +114,7 @@ ping = "192.168.0.112:59994"
 type = "uptimekuma"
 url = "http://192.168.0.112:59994"
 slug = "statuspageslug"
-fields = ["up", "down", "uptime", "incident"]
+fields = "up, down, uptime, incident"
 
 # ─── Your Spotify: что слушал ───────────────────────────────────
 
@@ -126,7 +130,7 @@ type = "yourspotify"
 url = "${YOURSPOTIFY_URL}"
 key = "${YOURSPOTIFY_KEY}"
 interval = "month"             # day, week (по умолчанию), month, year или all
-fields = ["songs", "time", "artists"]
+fields = "songs, time, artists"
 
 # ─── Watchtower: последнее обновление контейнеров ────────────────
 
@@ -142,4 +146,28 @@ ping = "192.168.0.112:59993"
 type = "watchtower"
 url = "http://192.168.0.112:59993"
 key = "${WATCHTOWER_KEY}"        # WATCHTOWER_HTTP_API_TOKEN
-fields = ["containers_scanned", "containers_updated", "containers_failed"]
+fields = "containers_scanned, containers_updated, containers_failed"
+
+# ─── Хост: этот же сервер, где живёт dashboard ────────────────────
+# Без link и alt карточка никуда не ведёт: она просто показывает
+# состояние, кликнуть по ней нельзя и курсор не меняется.
+# Два виджета на одной карточке: sys сверху, disk под ним.
+
+[service:ThisHost]
+icon = "mdi:server"
+desc = "Этот хост"
+group = "Widgets"
+widget = "sys, disk"
+
+[widget:sys]
+type = sysinfo
+tempmin = 20            # полосочка статуса: ниже — зелёная, выше tempmax — красная
+tempmax = 90
+units = metric          # imperial переведёт температуру в °F (по умолчанию metric)
+fields = "cpu, cputemp, memory, uptime"
+
+[widget:disk]
+type = disk
+disk = "C:\, D:\"      # пути как есть; на linux — /, /mnt/data
+diskunits = bytes       # bytes — 1.5 GB (1000), bbytes — 1.4 GiB (1024)
+fields = "free, consumed, total"

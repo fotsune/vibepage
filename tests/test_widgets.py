@@ -81,7 +81,7 @@ class ConfigTests(WidgetTestCase):
         self.assertEqual(widget.options["env"], 3)
         self.assertEqual(widget.options["key"], "secret-from-env")   # из окружения
         self.assertEqual(site.system.poll, 7)
-        self.assertEqual(site.services[0].widget, "box")
+        self.assertEqual(site.services[0].widgets, ["box"])
         self.assertEqual(site.services[0].ping, "192.0.2.10:9000")
         self.assertEqual([w for w in site.warnings if "box" in w], [])
 
@@ -190,7 +190,7 @@ class PortainerTests(WidgetTestCase):
         self.assertEqual(first["cards"], second["cards"])
         self.assertEqual(first["poll"], 7)
         card = first["cards"]["Infra::Box"]
-        self.assertEqual(card["widget"]["fields"][0]["value"], 1)
+        self.assertEqual(card["widgets"][0]["fields"][0]["value"], 1)
         self.assertEqual(card["ping"]["state"], "ok")
 
     def test_offline_snapshot_never_calls_out(self):
@@ -213,7 +213,7 @@ class PageAndRouteTests(WidgetTestCase):
         self.assertIn('data-key="Infra::Box"', body)
         self.assertIn('class="card-widget" data-widget="box"', body)
         self.assertIn('data-field="running"', body)
-        self.assertIn("запущено", body)
+        self.assertIn("running", body)
         self.assertIn("card-ping state-unknown", body)
         self.assertIn('id="live-state"', body)
 
@@ -225,7 +225,8 @@ class PageAndRouteTests(WidgetTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["Content-Type"], "application/json; charset=utf-8")
         data = json.loads(response.get_data(as_text=True))
-        fields = {field["key"]: field["value"] for field in data["cards"]["Infra::Box"]["widget"]["fields"]}
+        fields = {field["key"]: field["value"]
+                  for field in data["cards"]["Infra::Box"]["widgets"][0]["fields"]}
         self.assertEqual(fields, {"running": 1, "stopped": 1, "total": 2})
 
     def test_ping_state_never_exposes_the_target(self):
@@ -377,7 +378,7 @@ class TypedWidgetTests(WidgetTestCase):
         self.assertEqual(self.keys(state), ["total", "disabled", "enabled"])
         self.assertEqual(self.values(state), {"total": 3, "disabled": 1, "enabled": 2})
         labels = {field["key"]: field["label"] for field in state["fields"]}
-        self.assertEqual(labels["total"], "всего")
+        self.assertEqual(labels["total"], "total")
 
     def test_fields_can_drop_and_reorder(self):
         body = ('type = "npm"\nurl = "http://npm"\nusername = "u"\npassword = "p"\n'
@@ -404,17 +405,17 @@ class TypedWidgetTests(WidgetTestCase):
         seen = []
         state = self.run_typed(body, {"/control/stats": stats}, seen)
         self.assertTrue(state["ok"], state.get("error"))
-        self.assertEqual(self.values(state), {"queries": 10, "blocked": 4, "latency": "2 мс"})
+        self.assertEqual(self.values(state), {"queries": 10, "blocked": 4, "latency": "2 ms"})
         self.assertIn("Basic ", seen[0].headers.get("Authorization"))
 
-    def test_extra_fields_are_dropped_keeping_the_first_three(self):
+    def test_four_fields_fit(self):
         body = ('type = "adguard"\nurl = "http://adguard"\nusername = "admin"\npassword = "pw"\n'
                 'fields = ["queries", "blocked", "filtered", "latency"]\n')
         state = self.run_typed(body, {"/control/stats": ADGUARD_STATS})
         self.assertTrue(state["ok"], state.get("error"))
-        self.assertEqual(self.values(state), {"queries": 10, "blocked": 4, "filtered": 4})
+        self.assertEqual(list(self.values(state)), ["queries", "blocked", "filtered", "latency"])
 
-    def test_more_than_max_fields_takes_the_first_three(self):
+    def test_more_than_max_fields_takes_the_first_four(self):
         class Wide(widgets.Spec):
             TITLE = "Wide"
             FIELDS = (("a", "а"), ("b", "б"), ("c", "в"), ("d", "г"), ("e", "д"))
@@ -425,9 +426,9 @@ class TypedWidgetTests(WidgetTestCase):
         widgets.REGISTRY["wide"] = Wide()
         self.addCleanup(widgets.REGISTRY.pop, "wide", None)
         site = self.make_site('type = "wide"\nfields = ["a", "b", "c", "d", "e"]\n')
-        self.assertEqual(widgets.MAX_FIELDS, 3)
+        self.assertEqual(widgets.MAX_FIELDS, 4)
         self.assertEqual([field["key"] for field in widgets.fields_for(site.widgets["w"])],
-                         ["a", "b", "c"])
+                         ["a", "b", "c", "d"])
         self.assertEqual(site.warnings, [])
 
     def test_unknown_field_is_reported_and_skipped(self):
@@ -501,7 +502,7 @@ class TypedWidgetTests(WidgetTestCase):
         state = self.run_typed('type = "uptimekuma"\nurl = "http://kuma"\nslug = "s"\n'
                                'fields = ["uptime", "incident"]\n',
                                {"/api/status-page/heartbeat/": beats, "/api/status-page/": page})
-        self.assertEqual(self.values(state)["incident"], "5 ч")
+        self.assertEqual(self.values(state)["incident"], "5 h")
         self.assertEqual(self.values(state)["uptime"], "90.0%")
 
     def test_yourspotify_sums_the_interval(self):
@@ -510,7 +511,7 @@ class TypedWidgetTests(WidgetTestCase):
                                 "time_per": [{"count": 7_200_000}],
                                 "different_artists_per": [{"artists": [{}, {}, {}]}]})
         self.assertTrue(state["ok"], state.get("error"))
-        self.assertEqual(self.values(state), {"songs": 12, "time": "2 ч", "artists": 3})
+        self.assertEqual(self.values(state), {"songs": 12, "time": "2 h", "artists": 3})
 
     def test_watchtower_parses_prometheus_text(self):
         metrics = "# HELP x\nwatchtower_containers_scanned 7\nwatchtower_containers_updated 2\n" \
@@ -561,7 +562,7 @@ class FailureShapeTests(WidgetTestCase):
                          [widgets.CROSS] * 3)
         self.assertEqual({field["tone"] for field in state["fields"]}, {"down"})
         self.assertEqual([field["label"] for field in state["fields"]],
-                         ["запущено", "остановлено", "всего"])
+                         ["running", "stopped", "total"])
 
     def test_auth_failure_says_so(self):
         from urllib.error import HTTPError
@@ -572,3 +573,177 @@ class FailureShapeTests(WidgetTestCase):
             site = load(self.path)
             state = widgets.run_widget(site.widgets["box"])
         self.assertEqual(state["error"], "Access denied: HTTP 401.")
+
+
+# --------------------------------------------------------------------------- #
+# несколько виджетов, карточка без ссылки, sysinfo и disk
+# --------------------------------------------------------------------------- #
+
+MULTI_CONFIG = r"""
+[system]
+title = "Multi"
+cols = 1
+
+[group:Host]
+
+[service:Box]
+group = "Host"
+widget = "sys, disk"
+
+[service:NoLink]
+desc = "без ссылок"
+group = "Host"
+
+[widget:sys]
+type = sysinfo
+tempmin = 20
+tempmax = 80
+units = imperial
+fields = "cpu, cputemp, memory, uptime"
+
+[widget:disk]
+type = disk
+disk = "C:\, D:\"
+diskUnits = bbytes
+fields = "free, consumed, total"
+"""
+
+
+def _disk_usage(total=1000, used=400, free=600, percent=40.0):
+    return type("Usage", (), {"total": total, "used": used, "free": free, "percent": percent})()
+
+
+class MultiWidgetTestCase(unittest.TestCase):
+    def setUp(self):
+        widgets.clear_cache()
+        widgets._CPU_SAMPLED = True          # без паузы в первом замере
+        self.addCleanup(setattr, widgets, "_CPU_SAMPLED", False)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = os.path.join(self.tmp.name, "multi.toml")
+        with open(self.path, "w", encoding="utf-8") as handle:
+            handle.write(MULTI_CONFIG)
+        self.site = load(self.path)
+        os.environ["HOMEPAGE_CONFIG"] = self.path
+        self.addCleanup(os.environ.pop, "HOMEPAGE_CONFIG", None)
+        self.client = app_module.app.test_client()
+
+    def psutil_patch(self, **values):
+        fake = {
+            "cpu_percent": lambda interval=None: 42.0,
+            "virtual_memory": lambda: type("Mem", (), {"percent": 61.5})(),
+            "boot_time": lambda: 1000.0,
+            "sensors_temperatures": lambda: {
+                "coretemp": [type("Temp", (), {"label": "Package id 0", "current": 65.0})()]},
+            "disk_usage": lambda path: _disk_usage(),
+        }
+        fake.update(values)
+        return mock.patch.multiple(widgets.psutil, create=True, **fake)
+
+    # ── карточка без ссылки ────────────────────────────────────────
+
+    def test_service_without_link_or_alt_is_allowed(self):
+        self.assertEqual([w for w in self.site.warnings if "NoLink" in w], [])
+        self.assertEqual(self.site.services[1].widgets, [])
+
+    def test_card_without_link_is_rendered_but_not_clickable(self):
+        body = self.client.get("/").get_data(as_text=True)
+        self.assertIn('data-key="Host::NoLink"', body)
+        start = body.rindex("<article", 0, body.index('data-key="Host::NoLink"'))
+        card = body[start:start + 900]
+        self.assertIn("card-static", card)
+        self.assertIn('<a class="card-link">', card)       # <a> без href: не кликается
+        self.assertNotIn("href", card)
+
+    # ── несколько виджетов на карточке ────────────────────────────
+
+    def test_widget_list_is_split_on_commas(self):
+        self.assertEqual(self.site.services[0].widgets, ["sys", "disk"])
+
+    def test_card_renders_both_widgets_in_order(self):
+        with self.psutil_patch():
+            body = self.client.get("/").get_data(as_text=True)
+        card = body[body.index('data-key="Host::Box"'):][:2500]
+        self.assertLess(card.index('data-widget="sys"'), card.index('data-widget="disk"'))
+
+    def test_api_state_lists_every_widget_of_the_card(self):
+        with self.psutil_patch():
+            data = json.loads(self.client.get("/api/state").get_data(as_text=True))
+        live = data["cards"]["Host::Box"]["widgets"]
+        self.assertEqual([item["name"] for item in live], ["sys", "disk"])
+        self.assertEqual(live[0]["bar"]["tone"], "warn")     # полосочка едет вместе с данными
+
+    # ── sysinfo ────────────────────────────────────────────────────
+
+    def test_sysinfo_reads_cpu_memory_uptime_and_temperature(self):
+        with self.psutil_patch():
+            state = widgets.run_widget(self.site.widgets["sys"])
+        self.assertTrue(state["ok"], state.get("error"))
+        values = {field["key"]: field["value"] for field in state["fields"]}
+        self.assertEqual([field["key"] for field in state["fields"]],
+                         ["cpu", "cputemp", "memory", "uptime"])
+        self.assertEqual(values["cpu"], "42%")
+        self.assertEqual(values["memory"], "62%")
+        self.assertEqual(values["cputemp"], "149°F")          # units = imperial
+        self.assertRegex(values["uptime"], r"^\d+[dhm] ")
+
+    def test_sysinfo_metric_is_the_default(self):
+        options = dict(self.site.widgets["sys"].options)
+        options.pop("units")
+        self.assertEqual(widgets.SysInfo().show("cputemp", 65.0, options), "65°C")
+
+    def test_sysinfo_bar_follows_the_temperature_range(self):
+        with self.psutil_patch():
+            state = widgets.run_widget(self.site.widgets["sys"])
+        self.assertAlmostEqual(state["bar"]["value"], 0.75, places=2)   # 65 между 20 и 80
+        self.assertEqual(state["bar"]["tone"], "warn")
+
+    def test_sysinfo_bar_falls_back_to_cpu_without_a_sensor(self):
+        with self.psutil_patch(sensors_temperatures=lambda: {}):
+            state = widgets.run_widget(self.site.widgets["sys"])
+        self.assertIsNone(state["fields"][1]["value"])                  # датчика нет — прочерк
+        self.assertAlmostEqual(state["bar"]["value"], 0.42, places=2)
+
+    # ── disk ───────────────────────────────────────────────────────
+
+    def test_disk_sums_every_listed_path(self):
+        seen = []
+
+        def usage(path):
+            seen.append(path)
+            return _disk_usage(total=1000, used=900, free=100, percent=90.0)
+        with self.psutil_patch(disk_usage=usage):
+            state = widgets.run_widget(self.site.widgets["disk"])
+        self.assertEqual(seen, ["C:\\", "D:\\"])
+        values = {field["key"]: field["value"] for field in state["fields"]}
+        self.assertEqual(values["total"], "2.0 KiB")            # bbytes = двоичные единицы
+        self.assertEqual(values["consumed"], "1.8 KiB")
+        self.assertEqual(values["free"], "200 B")
+
+    def test_disk_bar_shows_how_full_it_is(self):
+        with self.psutil_patch(disk_usage=lambda path: _disk_usage(total=1000, used=920, free=80, percent=92.0)):
+            state = widgets.run_widget(self.site.widgets["disk"])
+        self.assertAlmostEqual(state["bar"]["value"], 0.92, places=2)
+        self.assertEqual(state["bar"]["tone"], "bad")
+
+    def test_unreadable_disk_is_a_short_phrase(self):
+        def usage(path):
+            raise OSError(2, "nope")
+        with self.psutil_patch(disk_usage=usage):
+            state = widgets.run_widget(self.site.widgets["disk"])
+        self.assertFalse(state["ok"])
+        self.assertEqual(state["error"], "Cannot read C:\\.")
+        self.assertIsNone(state["bar"])
+
+    def test_disk_units_default_to_decimal(self):
+        spec = widgets.Disk()
+        self.assertEqual(spec.show("total", 1_500_000, {}), "1.5 MB")
+        self.assertEqual(spec.show("total", 1_500_000, {"diskunits": "bbytes"}), "1.4 MiB")
+
+    # ── fields ─────────────────────────────────────────────────────
+
+    def test_fields_string_and_old_list_are_the_same(self):
+        string_widget = type("W", (), {"options": {"fields": "a, b"}})()
+        list_widget = type("W", (), {"options": {"fields": ["a", "b"]}})()
+        self.assertEqual(widgets.raw_fields(string_widget), ["a", "b"])
+        self.assertEqual(widgets.raw_fields(list_widget), ["a", "b"])

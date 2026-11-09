@@ -223,7 +223,12 @@
     }
 
     function paintWidget(card, widget) {
-      var box = card.querySelector(".card-widget");
+      // виджетов на карточке бывает несколько: ищем свой по имени
+      var boxes = card.querySelectorAll(".card-widget");
+      var box = null;
+      for (var index = 0; index < boxes.length; index += 1) {
+        if (boxes[index].dataset.widget === widget.name) { box = boxes[index]; break; }
+      }
       if (!box) return;
       // поля перекрашиваем всегда: на ошибке сервер присылает кресты вместо старых цифр
       (widget.fields || []).forEach(function (field) {
@@ -234,6 +239,7 @@
         value.textContent = field.value === null || field.value === undefined ? "—" : field.value;
         value.className = "widget-value tone-" + (field.tone || "idle");
       });
+      paintBar(box, widget.bar);
       if (widget.ok) {
         box.dataset.phase = "ok";
         delete box.dataset.tip;
@@ -243,13 +249,31 @@
       }
     }
 
+    /* полосочка статуса: пришла — рисуем, пропала (ошибка) — прячем */
+    function paintBar(box, bar) {
+      var node = box.querySelector(".widget-bar");
+      if (!bar) {
+        if (node) { node.hidden = true; }
+        return;
+      }
+      if (!node) {
+        node = document.createElement("div");
+        node.setAttribute("aria-hidden", "true");
+        node.appendChild(document.createElement("span"));
+        box.appendChild(node);
+      }
+      node.hidden = false;
+      node.className = "widget-bar tone-" + (bar.tone || "idle");
+      node.firstElementChild.style.width = Math.max(0, Math.min(100, bar.value * 100)) + "%";
+    }
+
     function applyState(payload) {
       var states = (payload && payload.cards) || {};
       Array.prototype.forEach.call(document.querySelectorAll(".card[data-key]"), function (card) {
         var state = states[card.dataset.key];
         if (!state) return;
         if (state.ping) paintPing(card, state.ping);
-        if (state.widget) paintWidget(card, state.widget);
+        (state.widgets || []).forEach(function (widget) { paintWidget(card, widget); });
       });
     }
 

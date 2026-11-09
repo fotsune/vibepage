@@ -410,6 +410,10 @@ a { color: inherit; text-decoration: none; }
 
 .card-with-alt .card-link { padding-right: 30px; }
 
+/* карточка без link и alt: живёт, но не кликается и курсор не трогает */
+.card-static .card-link { cursor: inherit; }
+.card-static:hover { transform: none; }
+
 .card-icon {
   flex: 0 0 auto;
   display: grid;
@@ -687,7 +691,8 @@ body.no-header .board { padding-top: clamp(22px, 2.8vw, 36px); }
 .card-with-widget .card-link { border-radius: var(--radius) var(--radius) 0 0; }
 
 .card-widget {
-  padding: 5px 10px 6px;
+  position: relative;
+  padding: 5px 10px 8px;
   border-top: 1px solid var(--line-soft);
   border-top-color: color-mix(in srgb, var(--accent) 18%, transparent);
   background: color-mix(in srgb, var(--accent) 5%, transparent);
@@ -717,6 +722,15 @@ body.no-header .board { padding-top: clamp(22px, 2.8vw, 36px); }
 
 .widget-field:first-child { border-left: 0; }
 
+/* четыре поля в карточке — шрифт на полпункта меньше, иначе не влезает */
+.widget-fields[data-count="4"] .widget-value { font-size: 12.5px; }
+.widget-fields[data-count="4"] .widget-field { padding: 0 6px; }
+
+/* несколько виджетов на карточке: каждый следующий — под предыдущим,
+   скругление снизу только у последнего */
+.card-widget + .card-widget { border-radius: 0; }
+.card-widget:not(:last-child) { border-radius: 0; }
+
 .widget-value {
   font: 600 14px/1.1 var(--mono);
   color: var(--fg-soft);
@@ -730,6 +744,31 @@ body.no-header .board { padding-top: clamp(22px, 2.8vw, 36px); }
 .widget-value.tone-idle { color: var(--fg-soft); }
 .widget-value.tone-down { color: var(--red); opacity: 0.7; }   /* данных нет */
 
+/* полосочка статуса: тонкая, во всю ширину виджета (загрузка CPU, заполненность диска) */
+.widget-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: color-mix(in srgb, var(--fg-soft) 9%, transparent);
+}
+
+.widget-bar span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--bar-color, var(--purple));
+  transition: width 0.35s ease, background 0.25s ease;
+}
+
+.widget-bar.tone-good { --bar-color: var(--green); }
+.widget-bar.tone-warn { --bar-color: var(--yellow); }
+.widget-bar.tone-bad { --bar-color: var(--red); }
+.widget-bar.tone-idle { --bar-color: var(--comment); }
+
 .widget-label {
   font-size: 9px;
   line-height: 1.25;
@@ -742,8 +781,9 @@ body.no-header .board { padding-top: clamp(22px, 2.8vw, 36px); }
   max-width: 100%;
 }
 
-/* ошибка: кресты вместо старых цифр, причина — во всплывающей подсказке */
-.card-widget[data-phase="error"] { cursor: help; }
+/* ошибка: кресты вместо старых цифр, причина — во всплывающей подсказке.
+   Курсор при этом не меняется: карточка не становится «справочной». */
+.card-widget[data-phase="error"] { cursor: inherit; }
 
 /* подсказка: своя, чтобы появлялась сразу, а не через браузерную секунду */
 .tip {

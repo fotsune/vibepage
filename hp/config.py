@@ -104,7 +104,7 @@ class Service:
     desc: str | None = None
     priority: int | None = None
     new_page: bool | None = None
-    widget: str | None = None         # имя секции [widget:…]
+    widgets: list[str] = field(default_factory=list)   # имена секций [widget:…], каждая — ниже предыдущей
     ping: str | None = None           # host, host:port или URL
     ping_timeout: float | None = None
     source: str | None = None
@@ -199,7 +199,10 @@ def parse_value(raw: str):
     if raw[0] in "\"'":
         quote = raw[0]
         for i in range(1, len(raw)):
-            if raw[i] == quote and raw[i - 1] != "\\":
+            closes = raw[i] == quote and (raw[i - 1] != "\\" or i == len(raw) - 1)
+            if closes:
+                # финальная кавычка закрывает строку даже после обратной косой:
+                # иначе путь вида "C:\" не дописать
                 return _unescape(raw[1:i])
         return _unescape(raw[1:])
     bare = re.split(r"\s#", raw, maxsplit=1)[0].strip()
@@ -294,6 +297,19 @@ def _as_str(value) -> str | None:
     if isinstance(value, bool):
         return "true" if value else "false"
     return _expand(str(value).strip()) or None
+
+
+def _as_names(value) -> list[str]:
+    """``widget = "один, другой"`` и ``["один", "другой"]`` → список имён."""
+    if value is None:
+        return []
+    items = value if isinstance(value, list) else str(value).split(",")
+    names: list[str] = []
+    for item in items:
+        text = str(item).strip().strip("\"'")
+        if text and text not in names:
+            names.append(text)
+    return names
 
 
 def _as_int(value, where: str, key: str, warnings: list[str], default=None, minimum=None):
@@ -506,8 +522,7 @@ def _make_service(section: dict, where: str, warnings: list[str]) -> Service:
     name = _as_str(values.get("name")) or section["name"] or "Unnamed"
     link = _as_str(values.get("link"))
     alt = _as_str(values.get("alt"))
-    if not link and not alt:
-        warnings.append(f"{where}: у сервиса {name!r} нет ни link, ни alt")
+    # без link и alt карточка просто никуда не ведёт — это разрешено
     return Service(
         name=name,
         group=_as_str(values.get("group")) or DEFAULT_GROUP,
@@ -517,7 +532,7 @@ def _make_service(section: dict, where: str, warnings: list[str]) -> Service:
         icon_link=_as_str(values.get("icon_link")),
         icon_color=_color_of(values.get("icon_color"), where, "icon_color", warnings),
         desc=_as_str(values.get("desc")),
-        widget=_as_str(values.get("widget")),
+        widgets=_as_names(values.get("widget")),
         ping=_as_str(values.get("ping")),
         ping_timeout=_as_float(values.get("ping_timeout"), where, "ping_timeout", warnings),
         priority=_as_int(values.get("priority"), where, "priority", warnings),
@@ -593,12 +608,13 @@ def load(main_path: str = "config/homepage.toml") -> Site:
     for widget in site.widgets.values():
         site.warnings += widget_lib.validate(widget)
     for service in site.services:
-        if service.widget and group_key(service.widget) not in site.widgets:
-            known = ", ".join(sorted(widget.name for widget in site.widgets.values())) or "ни одного"
-            site.warnings.append(
-                f"сервис {service.name!r} ссылается на виджет {service.widget!r}, "
-                f"а объявлены только: {known}"
-            )
+        known = ", ".join(sorted(widget.name for widget in site.widgets.values())) or "ни одного"
+        for name in service.widgets:
+            if group_key(name) not in site.widgets:
+                site.warnings.append(
+                    f"сервис {service.name!r} ссылается на виджет {name!r}, "
+                    f"а объявлены только: {known}"
+                )
 
     for group in site.groups.values():
         if group.link and group_key(group.link) not in site.groups:

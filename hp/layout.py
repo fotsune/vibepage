@@ -112,8 +112,8 @@ def _url_is_local(url: str | None) -> bool:
 
 
 def _link_title(url: str | None) -> str:
-    """Подпись для ссылки — по тому, локальная она или внешняя."""
-    return "Открыть локальную ссылку" if _url_is_local(url) else "Открыть внешнюю ссылку"
+    """Подпись для ссылки — по тому, локальная она или внешняя; по-английски, как и прочие служебные."""
+    return "Open local link" if _url_is_local(url) else "Open external link"
 
 
 def _initial(name: str) -> str:
@@ -123,14 +123,12 @@ def _initial(name: str) -> str:
     return "?"
 
 
-def _widget_view(service: Service, site: Site) -> dict | None:
+def _widget_view(name: str, site: Site) -> dict:
     """Скелет виджета: поля с подписями и, если кэш уже тёплый, значения."""
-    if not service.widget:
-        return None
-    widget = site.widgets.get(group_key(service.widget))
+    widget = site.widgets.get(group_key(name))
     if widget is None:
-        return {"name": service.widget, "title": service.widget, "fields": [], "ok": False,
-                "error": "Widget is not declared.", "at": 0}
+        return {"name": name, "title": name, "kind": "", "fields": [], "bar": None, "ok": False,
+                "phase": "error", "error": "Widget is not declared.", "at": 0}
     spec_fields = widget_lib.fields_for(widget)
     state = widget_lib.peek_widget(widget)
     failed = bool(state) and not state.get("ok")   # ошибка уже известна — кресты, не старые цифры
@@ -150,6 +148,8 @@ def _widget_view(service: Service, site: Site) -> dict | None:
              "tone": "down" if failed else tones.get(field["key"], "idle")}
             for field in spec_fields
         ],
+        # полосочка статуса: только у системных и дисковых, и только со свежими данными
+        "bar": (state or {}).get("bar") if state and state.get("ok") else None,
         "ok": bool(state and state.get("ok")),
         "phase": "error" if failed else ("ok" if state else "cold"),
         "error": (state or {}).get("error", "") if state else "",
@@ -178,7 +178,7 @@ def _build_service(service: Service, system, prefer_alt: bool, resolve_icon, acc
         "key": identity,
         "name": service.name,
         "desc": service.desc or "",
-        "url": primary or "#",
+        "url": primary,
         "url_alt": secondary,
         "url_alt_title": _link_title(secondary) if secondary else "",
         # подсказка чипа зависит от режима: в main он ведёт на alt, в alt — на link
@@ -192,7 +192,8 @@ def _build_service(service: Service, system, prefer_alt: bool, resolve_icon, acc
         "initial": _initial(service.name),
         "new_page": bool(new_page),
         "priority": service.priority,
-        "widget": _widget_view(service, site) if site is not None else None,
+        # у карточки бывает несколько виджетов: каждый следующий — под предыдущим
+        "widgets": [_widget_view(name, site) for name in service.widgets] if site is not None else [],
         "ping": _ping_view(service) if site is not None else None,
     }
 

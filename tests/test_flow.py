@@ -84,9 +84,9 @@ class ChipHintTests(unittest.TestCase):
 
     def test_hint_describes_the_link_the_chip_opens(self):
         # в режиме main чип ведёт на alt (локальный), в режиме alt — на link (внешний)
-        self.assertEqual(self.card["chip_title_main"], "Открыть локальную ссылку")
-        self.assertEqual(self.card["chip_title_alt"], "Открыть внешнюю ссылку")
-        self.assertEqual(self.card["url_alt_title"], "Открыть внешнюю ссылку")
+        self.assertEqual(self.card["chip_title_main"], "Open local link")
+        self.assertEqual(self.card["chip_title_alt"], "Open external link")
+        self.assertEqual(self.card["url_alt_title"], "Open external link")
 
 
 class FlowHtmlTests(unittest.TestCase):
@@ -98,6 +98,6 @@ class FlowHtmlTests(unittest.TestCase):
         body = app_module.app.test_client().get("/").get_data(as_text=True)
         self.assertIn("--flow: 0", body)
         self.assertIn("--flow: 5", body)
-        self.assertIn('data-title-main="Открыть локальную ссылку"', body)
-        self.assertIn('data-title-alt="Открыть внешнюю ссылку"', body)
+        self.assertIn('data-title-main="Open local link"', body)
+        self.assertIn('data-title-alt="Open external link"', body)
         self.assertIn("order: var(--flow", open("static/css/style.css", encoding="utf-8").read())
