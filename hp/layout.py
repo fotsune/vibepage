@@ -127,7 +127,8 @@ def _widget_view(name: str, site: Site) -> dict:
     """Скелет виджета: поля с подписями и, если кэш уже тёплый, значения."""
     widget = site.widgets.get(group_key(name))
     if widget is None:
-        return {"name": name, "title": name, "kind": "", "caption": None, "fields": [], "bar": None, "ok": False,
+        return {"name": name, "title": name, "kind": "", "caption": None, "fields": [], "bar": None,
+                "rows": None, "ok": False,
                 "phase": "error", "error": "Widget is not declared.", "at": 0}
     spec_fields = widget_lib.fields_for(widget)
     state = widget_lib.peek_widget(widget)
@@ -159,6 +160,8 @@ def _widget_view(name: str, site: Site) -> dict:
         ],
         # полосочка статуса: только у системных и дисковых, и только со свежими данными
         "bar": (state or {}).get("bar") if state and state.get("ok") else None,
+        # строки под полями: очередь раздач, что играет сейчас
+        "rows": (state or {}).get("rows") if state and state.get("ok") else None,
         "ok": bool(state and state.get("ok")),
         "phase": "error" if failed else ("ok" if state else "cold"),
         "error": (state or {}).get("error", "") if state else "",

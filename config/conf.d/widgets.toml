@@ -17,6 +17,7 @@
 [group:Widgets]
 priority = 5
 color = cyan
+cols = 2
 
 # ─── Portainer: счётчики контейнеров ─────────────────────────────
 
@@ -148,6 +149,44 @@ url = "http://192.168.0.112:59993"
 key = "${WATCHTOWER_KEY}"        # WATCHTOWER_HTTP_API_TOKEN
 fields = "containers_scanned, containers_updated, containers_failed"
 
+# ─── qBittorrent: раздачи ─────────────────────────────────
+
+[service:Qbittorrent]
+link = "http://192.168.0.112:59995"
+icon = "sdi:qbittorrent"
+desc = "Раздачи и скорости"
+group = "Widgets"
+widget = "qbittorrent"
+ping = "192.168.0.112:59995"      # порт — значит TCP: жив ли сам сервис
+
+[widget:qbittorrent]
+type = qbittorrent
+url = "http://192.168.0.112:59995"
+username = "${QBT_USERNAME}"        # секреты — в config/.env, не в git
+password = "${QBT_PASSWORD}"
+key = "${QBT_KEY:-}"                # ключ API главнее логина; пусто — вход по паролю
+enableleechprogress = true          # под полями — очередь качающегося
+enableleechsize = true              # и сколько осталось у каждой строки
+fields = "leech, download, seed, upload"
+
+# ─── Navidrome: медиатека ──────────────────────────────────
+
+[service:Navidrome]
+link = "http://192.168.0.112:59996"
+icon = "sdi:navidrome"
+desc = "Медиатека и что играет"
+group = "Widgets"
+widget = "navidrome"
+ping = "192.168.0.112:59996"
+
+[widget:navidrome]
+type = navidrome
+url = "http://192.168.0.112:59996/api"   # база Subsonic-API: у этого сервера baseURL = /api
+user = "${NAVIDROME_USER}"
+token = "${NAVIDROME_TOKEN}"          # md5(пароль + salt): пароль по сети не ходит
+salt = "${NAVIDROME_SALT}"
+fields = "playing, artists, albums"
+
 # ─── Хост: этот же сервер, где живёт dashboard ────────────────────
 # Без link и alt карточка никуда не ведёт: она просто показывает
 # состояние, кликнуть по ней нельзя и курсор не меняется.
@@ -184,6 +223,7 @@ icon = "mdi:server"
 desc = "Другой хост"
 group = "Widgets"
 widget = "cpu_ext, ram_ext, disk_ext"     # каждый следующий — под предыдущим
+ping = "192.168.0.113"                   # без порта — ICMP: жив ли хост, а не сервис
 
 [widget:cpu_ext]
 type = cpu

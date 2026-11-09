@@ -72,7 +72,9 @@ new_page = true                 # необяз · system.open_in_new_page
 widget = "cpu"                  # необяз · пусто — секции [widget:…] через запятую,
                                 # каждая следующая стопкой, максимум 4 поля на виджет
 ping = "1.1.1.1:443"            # необяз · нет точки — точка статуса: host или host:port
-                                # (TCP-подключение, порт по умолчанию 443)
+                                # host — ICMP (жив ли хост, даже если порты закрыты),
+                                # host:port — TCP-подключение (жив ли сервис);
+                                # icmp://host и tcp://host[:port] — способ вручную
 ping_timeout = 2                # необяз · 2 — секунд на попытку
 
 
@@ -168,6 +170,33 @@ key = "${WATCHTOWER_KEY:-token}"      # ОБЯЗ — WATCHTOWER_HTTP_API_TOKEN
 # fields = "containers_scanned, containers_updated, containers_failed"  # необяз · все поля
 # host = "192.168.0.11:24556"
 # external = "watchtower"
+
+# раздачи qBittorrent (Web API v2)
+[widget:qbittorrent]
+type = qbittorrent
+url = "http://192.168.0.112:59995"    # ОБЯЗ
+key = "${QBT_KEY:-}"                  # необяз · API-ключ (Настройки → Web UI → API keys),
+                                      # уходит заголовком Authorization: Bearer
+username = "${QBT_USERNAME:-admin}"   # необяз · без ключа — вход по паролю
+password = "${QBT_PASSWORD:-}"
+enableleechprogress = true            # необяз · false — под полями очередь раздач
+enableleechsize = true                # необяз · false — у строки ещё и сколько осталось
+# fields = "leech, download, seed, upload"   # необяз · все поля
+# host = "192.168.0.112:24556"
+# external = "qbittorrent"
+
+# медиатека Navidrome (Subsonic API; token = md5(пароль + salt))
+[widget:navidrome]
+type = navidrome
+url = "http://192.168.0.112:59996/api"     # ОБЯЗ · база Subsonic-API (baseURL сервера входит в url)
+user = "${NAVIDROME_USER:-admin}"      # ОБЯЗ
+# token и salt — пара: md5(пароль + salt). Считается локально, пароль по сети не ходит:
+#   python -c "import hashlib,sys;print(hashlib.md5((sys.argv[1]+sys.argv[2]).encode()).hexdigest())" пароль соль
+token = "${NAVIDROME_TOKEN:-}"         # ОБЯЗ
+salt = "${NAVIDROME_SALT:-}"           # ОБЯЗ
+# fields = "playing, artists, albums"  # необяз · все поля
+# host = "192.168.0.112:24556"
+# external = "navidrome"
 
 # сам хост, где живёт dashboard (в контейнере — контейнер)
 [widget:cpu]

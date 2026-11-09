@@ -127,6 +127,17 @@
               {% if widget.bar %}
               <div class="widget-bar tone-{{ widget.bar.tone }}" aria-hidden="true"><span style="width: {{ (widget.bar.value * 100)|round(1) }}%"></span></div>
               {% endif %}
+              {% if widget.rows %}
+              <div class="widget-rows">
+                {% for row in widget.rows %}
+                <div class="widget-row">
+                  {% if row.progress is not none %}<span class="widget-row-bar" aria-hidden="true"><span style="width: {{ (row.progress * 100)|round(1) }}%"></span></span>{% endif %}
+                  <span class="widget-row-title" data-tip="{{ row.title }}">{{ row.title }}</span>
+                  {% if row.meta %}<span class="widget-row-meta">{{ row.meta }}</span>{% endif %}
+                </div>
+                {% endfor %}
+              </div>
+              {% endif %}
             </div>
             {% endfor %}
           </article>

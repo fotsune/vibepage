@@ -217,9 +217,12 @@
       ["ok", "slow", "down", "unknown"].forEach(function (name) {
         node.classList.toggle("state-" + name, name === state);
       });
-      var words = { ok: "Up", slow: "Slow", down: "Down" };   // те же слова, что в hp/widgets.py
+      // те же слова и тот же способ проверки, что в ping_title() из hp/widgets.py
+      var words = { ok: "Up", slow: "Slow", down: "Down" };
+      var via = { icmp: "ICMP", tcp: "TCP" }[ping.via] || "";
       node.dataset.tip = "Ping: " + (words[state] || "Unknown") +
-        (ping.ms === null || ping.ms === undefined ? "" : " · " + ping.ms + " ms");
+        (ping.ms === null || ping.ms === undefined ? "" : " · " + ping.ms + " ms") +
+        (via ? " · " + via : "");
     }
 
     function paintWidget(card, widget) {
@@ -241,6 +244,7 @@
         if (field.tip) { value.dataset.tip = field.tip; } else { delete value.dataset.tip; }
       });
       paintBar(box, widget.bar);
+      paintRows(box, widget.rows);
       if (widget.ok) {
         box.dataset.phase = "ok";
         delete box.dataset.tip;
@@ -266,6 +270,48 @@
       node.hidden = false;
       node.className = "widget-bar tone-" + (bar.tone || "idle");
       node.firstElementChild.style.width = Math.max(0, Math.min(100, bar.value * 100)) + "%";
+    }
+
+    /* строки под полями (очередь раздач, что играет): нет строк — прячем,
+       есть — перерисовываем целиком: их не больше трёх, это дёшево */
+    function paintRows(box, rows) {
+      var holder = box.querySelector(".widget-rows");
+      if (!rows || !rows.length) {
+        if (holder) holder.hidden = true;
+        return;
+      }
+      if (!holder) {
+        holder = document.createElement("div");
+        holder.className = "widget-rows";
+        box.appendChild(holder);
+      }
+      holder.hidden = false;
+      holder.textContent = "";
+      rows.forEach(function (row) {
+        var line = document.createElement("div");
+        line.className = "widget-row";
+        if (row.progress !== null && row.progress !== undefined) {
+          var track = document.createElement("span");
+          track.className = "widget-row-bar";
+          track.setAttribute("aria-hidden", "true");
+          var fill = document.createElement("span");
+          fill.style.width = Math.max(0, Math.min(100, row.progress * 100)) + "%";
+          track.appendChild(fill);
+          line.appendChild(track);
+        }
+        var title = document.createElement("span");
+        title.className = "widget-row-title";
+        title.textContent = row.title || "";
+        title.dataset.tip = row.title || "";
+        line.appendChild(title);
+        if (row.meta) {
+          var meta = document.createElement("span");
+          meta.className = "widget-row-meta";
+          meta.textContent = row.meta;
+          line.appendChild(meta);
+        }
+        holder.appendChild(line);
+      });
     }
 
     function applyState(payload) {

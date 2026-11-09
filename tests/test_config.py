@@ -215,7 +215,7 @@ class ExampleConfigTests(unittest.TestCase):
     def test_every_widget_can_be_taken_from_a_neighbour(self):
         # external работает у каждого типа, значит и расписан в каждом блоке
         blocks = re.split(r"(?m)^\[widget:", self.text())[1:]
-        self.assertEqual(len(blocks), 11)
+        self.assertEqual(len(blocks), 13)
         for block in blocks:
             head = block.split("\n", 1)[0].strip(" ]")
             for key in ("type", "host", "external", "fields"):

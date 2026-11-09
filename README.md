@@ -346,15 +346,15 @@ fields = "running, stopped, total"   # какие поля и в каком по
 link = "https://192.168.0.112:9000"
 group = "Group1"
 widget = "portainer"           # три поля: running / stopped / total
-ping = "192.168.0.112:9000"    # точка статуса; хост и порт, порт по умолчанию 443
+ping = "192.168.0.112:9000"    # точка статуса: host — ICMP, host:port — TCP
 ping_timeout = 2               # секунд на попытку, по умолчанию 2
 ```
 
 | ключ карточки | смысл |
 | --- | --- |
 | `widget` | имена секций `[widget:…]` через запятую; без неё — пусто |
-| `ping` | `host` или `host:port`, TCP-подключение к сервису |
-| `ping_timeout` | таймаут одного пинга в секундах |
+| `ping` | `host` — ICMP (жив ли хост), `host:port` — TCP (жив ли сервис) |
+| `ping_timeout` | таймаут одной попытки в секундах |
 
 Ключи `[widget:…]`: `type` — тип источника, плюс то, что этот тип требует (см. таблицу ниже),
 `fields` — какие поля показывать и в каком порядке, и общие для всех `timeout` и `verify_tls`.
@@ -370,7 +370,11 @@ ping_timeout = 2               # секунд на попытку, по умол
 | `NPM_USERNAME`, `NPM_PASSWORD` | вход в Nginx Proxy Manager (e-mail и пароль) |
 | `CHANGEDETECTION_KEY` | API-ключ changedetection.io (Settings → API) |
 | `WATCHTOWER_KEY` | `WATCHTOWER_HTTP_API_TOKEN` |
-| `YOURSPOTIFY_URL`, `YOURSPOTIFY_KEY` | адрес API Your Spotify и ключ пользователя | Кэш: поля — 10 секунд, пинги — 5; `GET /api/state?cached=1` отдаёт
+| `YOURSPOTIFY_URL`, `YOURSPOTIFY_KEY` | адрес API Your Spotify и ключ пользователя |
+| `QBT_USERNAME`, `QBT_PASSWORD`, `QBT_KEY` | вход в qBittorrent (ключ API главнее пароля) |
+| `NAVIDROME_USER`, `NAVIDROME_TOKEN`, `NAVIDROME_SALT` | вход в Navidrome: token = md5(пароль + salt) |
+
+Кэш: поля — 10 секунд, пинги — 5; пинги — 5; `GET /api/state?cached=1` отдаёт
 только то, что уже в кэше, совсем без сетевых попыток. `GET /api/widget?id=имя`
 отдаёт один виджет — для дашборда на другом хосте (см. «Виджет с другого хоста»).
 
@@ -386,6 +390,8 @@ ping_timeout = 2               # секунд на попытку, по умол
 | `uptimekuma` | `/api/status-page[/heartbeat]/{slug}` | `url`, `slug` | `up`, `down`, `uptime`, `incident` |
 | `yourspotify` | `/spotify/{songs,time,different_artists}_per` | `url`, `key` (+`interval`) | `songs`, `time`, `artists` |
 | `watchtower` | `/v1/metrics` (prometheus-текст) | `url`, `key` | `containers_scanned`, `containers_updated`, `containers_failed` |
+| `qbittorrent` | `/api/v2/torrents/info` (Web API v2) | `url` и (`key` или `username`+`password`) | `leech`, `download`, `seed`, `upload` |
+| `navidrome` | Subsonic API: `/rest/getNowPlaying` и `/rest/getArtists` | `url`, `user`, `token`, `salt` | `playing`, `artists`, `albums` |
 | `cpu` | сам хост: загрузка CPU, температура, аптайм | нет (+`tempmin`, `tempmax`, `units`) | `cpu`, `cputemp`, `uptime` |
 | `ram` | сам хост: оперативная память | нет (+`ramunits`) | `free`, `consumed`, `total` |
 | `disk` | свободное место по путям | `disk` (+`diskunits`, `name`) | `free`, `consumed`, `total` |
@@ -397,8 +403,52 @@ ping_timeout = 2               # секунд на попытку, по умол
 В карточку влезает не больше четырёх полей, поэтому прописанное дальше просто отбрасывается
 с конца; опечатка в имени поля страницу не ломает — в конфиг-предупреждениях будет сказано,
 какое имя неизвестно и какие есть.
+Под полями у некоторых типов есть ещё строки (не больше трёх) — очередь раздач
+у `qbittorrent`, что играет сейчас у `navidrome`: имя, доля выполнения тонкой полоской
+и мелочь справа. Строки обновляются вместе с полями, тем же поллингом.
 `yourspotify` понимает `interval` (`day`, `week`, `month`, `year`, `all`; по умолчанию `week`),
 `npm` помнит выданный токен час, чтобы не логиниться на каждый опрос.
+
+### qBittorrent и Navidrome
+
+```toml
+[widget:qbittorrent]
+type = qbittorrent
+url = "http://192.168.0.112:59995"
+username = "${QBT_USERNAME}"        # или key = "${QBT_KEY}" — ключ API главнее пароля
+password = "${QBT_PASSWORD}"
+enableleechprogress = true          # под полями — очередь качающегося
+enableleechsize = true              # у строки ещё и сколько осталось
+fields = "leech, download, seed, upload"
+
+[widget:navidrome]
+type = navidrome
+url = "http://192.168.0.112:59996/api"   # база Subsonic-API: baseURL сервера входит в url
+user = "${NAVIDROME_USER}"
+token = "${NAVIDROME_TOKEN}"          # md5(пароль + salt)
+salt = "${NAVIDROME_SALT}"
+```
+
+`qbittorrent` складывает раздачи в четыре числа: сколько качается, сколько раздаётся и
+сумма скоростей в обе стороны. Вход — ключ API (заголовок `Authorization: Bearer`) или
+логин с паролем: тогда сервер входит один раз и час живёт с печенькой `SID`, а если она
+протухла — входит снова сам. `enableleechprogress = true` добавляет под поля до трёх
+строк очереди: имя раздачи, доля и (с `enableleechsize`) остаток. Сначала идут те, что
+реально качаются, за ними ожидающие. `Referer`/`Origin` уходят те же, что у браузера:
+qBittorrent сверяет их у POST.
+
+`navidrome` спрашивает Subsonic-API: `playing` — сколько играет сейчас (и кто — теми же
+строками), `artists` и `albums` — размер медиатеки, одним запросом `getArtists`. Пустая
+медиатека — это нули, а не кресты. Пара `token`/`salt` считается локально:
+`md5(пароль + salt)`, так что сам пароль по сети не ходит; сгенерировать строку:
+
+```sh
+python -c "import hashlib,sys;print(hashlib.md5((sys.argv[1]+sys.argv[2]).encode()).hexdigest())" пароль соль
+```
+
+Если Navidrome живёт под `baseURL` (в его ответе видно `"baseURL":"/api"`), этот
+префикс — часть `url`: у сервера с `baseURL = /api` адрес будет
+`http://host:4533/api`, иначе `/rest/…` ответит страницей интерфейса, а не JSON.
 
 ### Хост и диски, полосочка статуса
 
@@ -467,6 +517,28 @@ fields = "free, consumed, total"
 спокойный (`running`, `up`), тревожный (`stopped`, `failed`) и предупреждающий
 (`blocked` у AdGuard, неполный аптайм). Подписи полей — по-английски, как и служебные
 тексты: русский остался только там, где говорит сама страница («обновить», поиск).
+
+### Пинг: ICMP без порта, TCP с портом
+
+```toml
+ping = "192.168.0.11"          # ICMP: жив ли хост — работает, даже если все порты закрыты
+ping = "192.168.0.11:25565"    # TCP: жив ли сервис на этом порту
+ping = "icmp://192.168.0.11"   # способ явно: только ICMP
+ping = "tcp://192.168.0.11"    # способ явно: только TCP (порт 80)
+```
+
+Раньше точка всегда стучалась в TCP-порт (порт 80, если не написан), и хост без
+веб-сервера — NAS, роутер, малина — краснел, хотя был жив. Теперь `ping = "host"` без
+порта — это настоящий ICMP через системный `ping`: он есть и на Windows, и на macOS, и в
+alpine (busybox), прав в системе не требует. С портом всё по-старому: TCP-подключение
+проверяет сервис, а не хост.
+
+Если ICMP промолчал, пробуются TCP 80 и 443: часть хостов прячет ICMP (типичная настройка
+Windows-файрвола), а точку на работающей машине красной видеть незачем. Совсем без
+системного `ping` (голый контейнер без busybox) всё идёт по TCP, как раньше, — так что
+в контейнере ничего не ломается. В подсказке назван способ, которым ответили:
+«Ping: Up · 1 ms · ICMP» или «Ping: Up · 3 ms · TCP» — по нему и видно, что именно
+проверено. Адреса в подсказке по-прежнему нет.
 
 Если сервис недоступен, в полях карточки стоят кресты (старые цифры не выдаются за свежие),
 а причина — в подсказке при наведении на полосу полей; курсор при этом не меняется:

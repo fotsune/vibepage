@@ -80,6 +80,26 @@ class WidgetTestCase(unittest.TestCase):
         os.environ["TEST_PORTAINER_KEY"] = "secret-from-env"
         self.addCleanup(self._restore_env)
 
+    def make_site(self, widget_body: str):
+        """Конфиг с одной карточкой и одним виджетом — по тексту тела секции."""
+        path = os.path.join(self.tmp.name, "typed.toml")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write('[system]\ntitle = "W"\n\n[group:Infra]\n\n'
+                         '[service:Card]\nlink = "http://x"\ngroup = "Infra"\nwidget = "w"\n\n'
+                         '[widget:w]\n' + widget_body)
+        return load(path)
+
+    def run_typed(self, widget_body: str, routes: dict, seen=None):
+        site = self.make_site(widget_body)
+        with mock.patch.object(widgets, "urlopen", fake_router(routes, seen)):
+            return widgets.run_widget(site.widgets["w"])
+
+    def keys(self, state):
+        return [field["key"] for field in state["fields"]]
+
+    def values(self, state):
+        return {field["key"]: field["value"] for field in state["fields"]}
+
     def _restore_env(self):
         if self.saved is None:
             os.environ.pop("TEST_PORTAINER_KEY", None)
@@ -127,12 +147,64 @@ widget = "missing"
 
 class PingTests(unittest.TestCase):
     def test_split_target(self):
-        self.assertEqual(widgets.split_target("nas"), ("nas", 80))
+        self.assertEqual(widgets.split_target("nas"), ("nas", None))   # без порта — ICMP
         self.assertEqual(widgets.split_target("nas:81"), ("nas", 81))
         self.assertEqual(widgets.split_target("https://192.168.0.2:9000/x"), ("192.168.0.2", 9000))
         self.assertEqual(widgets.split_target("https://example.com"), ("example.com", 443))
+        self.assertEqual(widgets.split_target("tcp://example.com"), ("example.com", 80))
+        self.assertEqual(widgets.split_target("icmp://example.com"), ("example.com", None))
+        self.assertEqual(widgets.split_target("nas", fallback_port=25565), ("nas", 25565))
         with self.assertRaises(ValueError):
             widgets.split_target("   ")
+
+    def test_icmp_reply_is_parsed_in_any_locale(self):
+        # Windows по-английски, Linux, busybox и русская Windows: время и TTL ищем везде
+        samples = [
+            (b"Reply from 192.168.0.11: bytes=32 time<1ms TTL=128", 1),
+            (b"64 bytes from 192.168.0.11: icmp_seq=1 ttl=64 time=0.412 ms", 0),
+            (b"PING 192.168.0.11 (192.168.0.11): 56 data bytes\n64 bytes from 192.168.0.11: "
+             b"seq=0 ttl=64 time=1.7 ms", 1),
+            ("Ответ от 192.168.0.11: число байт=32 время=117мс TTL=64".encode("cp866"), 117),
+        ]
+        for raw, expected in samples:
+            text = widgets.icmp_text(raw)
+            self.assertTrue(widgets.ICMP_TTL.search(text), raw)
+            found = widgets.ICMP_TIME.search(text)
+            self.assertIsNotNone(found, raw)
+            self.assertEqual(int(float(found.group(1).replace(",", "."))), expected)
+
+    @unittest.skipUnless(widgets.icmp_available(), "в системе нет ping")
+    def test_icmp_ping_answers_for_localhost(self):
+        state = widgets.ping("127.0.0.1", timeout=2)
+        self.assertEqual(state["state"], "ok")
+        self.assertEqual(state["via"], "icmp")
+
+    def test_host_is_pinged_with_icmp_not_port_80(self):
+        calls = []
+        with mock.patch.object(widgets, "icmp", lambda host, timeout: calls.append(host) or
+                               {"state": "ok", "ms": 1, "via": "icmp"}), \
+                mock.patch.object(widgets, "_tcp", side_effect=AssertionError("TCP не нужен")):
+            state = widgets.ping("192.168.0.11")
+        self.assertEqual(state, {"state": "ok", "ms": 1, "via": "icmp"})
+        self.assertEqual(calls, ["192.168.0.11"])
+
+    def test_host_hiding_icmp_falls_back_to_tcp(self):
+        def no_icmp(host, timeout):
+            return {"state": "down", "ms": None, "via": "icmp", "error": "No response"}
+
+        def tcp(host, port, timeout):
+            return {"state": "ok" if port == 443 else "down", "ms": 4, "via": "tcp"}
+
+        with mock.patch.object(widgets, "icmp", no_icmp), mock.patch.object(widgets, "_tcp", tcp):
+            state = widgets.ping("192.168.0.11")
+        self.assertEqual(state["state"], "ok")
+        self.assertEqual(state["via"], "tcp")
+
+    def test_ping_tooltip_names_the_method(self):
+        self.assertEqual(widgets.ping_title({"state": "ok", "ms": 1, "via": "icmp"}),
+                         "Ping: Up · 1 ms · ICMP")
+        self.assertEqual(widgets.wire_ping({"state": "ok", "ms": 1, "via": "icmp"}),
+                         {"state": "ok", "ms": 1, "via": "icmp"})
 
     def test_live_socket_is_ok(self):
         server = socket.socket()
@@ -361,6 +433,24 @@ ADGUARD_STATS = {"num_dns_queries": 10, "num_blocked_filtering": 4, "num_replace
 
 
 class TypedWidgetTests(WidgetTestCase):
+    def make_site(self, widget_body: str):
+        path = os.path.join(self.tmp.name, "typed.toml")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write('[system]\ntitle = "W"\n\n[group:Infra]\n\n'
+                         '[service:Card]\nlink = "http://x"\ngroup = "Infra"\nwidget = "w"\n\n'
+                         '[widget:w]\n' + widget_body)
+        return load(path)
+
+    def run_typed(self, widget_body: str, routes: dict, seen=None):
+        site = self.make_site(widget_body)
+        with mock.patch.object(widgets, "urlopen", fake_router(routes, seen)):
+            return widgets.run_widget(site.widgets["w"])
+
+    def keys(self, state):
+        return [field["key"] for field in state["fields"]]
+
+    def values(self, state):
+        return {field["key"]: field["value"] for field in state["fields"]}
     def make_site(self, widget_body: str):
         path = os.path.join(self.tmp.name, "typed.toml")
         with open(path, "w", encoding="utf-8") as handle:
@@ -1062,3 +1152,152 @@ class RemoteWidgetTestCase(unittest.TestCase):
         self.assertEqual(widgets.find_widget(site, "Box.nas").name, "nas")
         self.assertEqual(widgets.find_widget(site, "disk").name, "nas")   # по типу
         self.assertIsNone(widgets.find_widget(site, "ram"))
+
+
+TORRENTS = [
+    # первый — качается, второй — ждёт, третий — раздаётся (progress = 1)
+    {"name": "ubuntu.iso", "progress": 0.42, "dlspeed": 1_500_000, "upspeed": 20_000,
+     "size": 3_000_000_000, "amount_left": 1_740_000_000, "state": "downloading"},
+    {"name": "debian.iso", "progress": 0.05, "dlspeed": 0, "upspeed": 0,
+     "size": 700_000_000, "amount_left": 665_000_000, "state": "queuedDL"},
+    {"name": "album.flac", "progress": 1, "dlspeed": 0, "upspeed": 300_000,
+     "size": 40_000_000, "amount_left": 0, "state": "uploading"},
+]
+
+
+def fake_opener(routes, seen=None):
+    """Подмена build_opener: у qBittorrent вход идёт печенькой, а не urlopen."""
+    class Opener:
+        def open(self, request, timeout=None):
+            if seen is not None:
+                seen.append(request)
+            for needle, payload in routes.items():
+                if needle in request.full_url:
+                    raw = payload if isinstance(payload, (bytes, str)) else json.dumps(payload)
+                    return FakeResponse(raw.encode("utf-8") if isinstance(raw, str) else raw)
+            raise AssertionError(f"не ждали запрос {request.full_url}")
+
+    return lambda *handlers: Opener()
+
+
+class QbittorrentTests(WidgetTestCase):
+    BODY = ('type = "qbittorrent"\nurl = "http://qbt:8080"\n'
+            'username = "admin"\npassword = "secret"\n')
+
+    def test_torrents_become_four_numbers(self):
+        seen = []
+        state = self.run_typed(self.BODY + 'key = "k"\n', {"/torrents/info": TORRENTS}, seen)
+        self.assertTrue(state["ok"], state.get("error"))
+        self.assertEqual(self.keys(state), ["leech", "download", "seed", "upload"])
+        self.assertEqual(self.values(state), {"leech": 2, "download": "1.5 MB/s",
+                                              "seed": 1, "upload": "320 KB/s"})
+        self.assertEqual([request.full_url for request in seen],
+                         ["http://qbt:8080/api/v2/torrents/info"])
+
+    def test_key_rides_in_the_authorization_header(self):
+        seen = []
+        site = self.make_site(self.BODY + 'key = "k"\n')
+        with mock.patch.object(widgets, "urlopen", fake_router({"/torrents/info": TORRENTS}, seen)):
+            state = widgets.run_widget(site.widgets["w"])
+        self.assertTrue(state["ok"], state.get("error"))
+        self.assertEqual(seen[0].get_header("Authorization"), "Bearer k")
+
+    def test_login_sets_the_cookie_then_asks_for_torrents(self):
+        seen = []
+        site = self.make_site(self.BODY)
+        with mock.patch.object(widgets, "build_opener",
+                               fake_opener({"/auth/login": "Ok.", "/torrents/info": TORRENTS}, seen)):
+            state = widgets.run_widget(site.widgets["w"])
+        self.assertTrue(state["ok"], state.get("error"))
+        self.assertEqual([request.full_url.split("/api/v2")[-1] for request in seen],
+                         ["/auth/login", "/torrents/info"])
+        login = seen[0]
+        self.assertIn(b"username=admin", login.data)
+        self.assertIn(b"password=secret", login.data)
+        self.assertEqual(login.get_header("Referer"), "http://qbt:8080/")   # как браузер
+        self.assertEqual(login.get_header("Origin"), "http://qbt:8080")
+
+    def test_wrong_password_is_one_short_phrase(self):
+        site = self.make_site(self.BODY)
+        with mock.patch.object(widgets, "build_opener", fake_opener({"/auth/login": "Fails."})):
+            state = widgets.run_widget(site.widgets["w"])
+        self.assertFalse(state["ok"])
+        self.assertEqual(state["error"], "Access denied: check login and password.")
+        self.assertNotIn("qbt", state["error"])
+
+    def test_queue_rows_only_when_asked(self):
+        body = self.BODY + 'key = "k"\nenableleechprogress = true\nenableleechsize = true\n'
+        state = self.run_typed(body, {"/torrents/info": TORRENTS})
+        self.assertEqual([row["title"] for row in state["rows"]], ["ubuntu.iso", "debian.iso"])
+        self.assertEqual(state["rows"][0]["meta"], "42% · 1.6 GiB")
+        self.assertAlmostEqual(state["rows"][0]["progress"], 0.42, places=3)
+        quiet = self.run_typed(self.BODY + 'key = "k"\n', {"/torrents/info": TORRENTS})
+        self.assertIsNone(quiet["rows"])
+
+    def test_rows_without_size(self):
+        body = self.BODY + 'key = "k"\nenableleechprogress = true\n'
+        state = self.run_typed(body, {"/torrents/info": TORRENTS})
+        self.assertEqual(state["rows"][0]["meta"], "42%")
+
+    def test_speed_tones_follow_activity(self):
+        state = self.run_typed(self.BODY + 'key = "k"\n', {"/torrents/info": TORRENTS})
+        tones = {field["key"]: field["tone"] for field in state["fields"]}
+        self.assertEqual(tones, {"leech": "warn", "download": "good", "seed": "idle",
+                                 "upload": "good"})
+        idle = self.run_typed(self.BODY + 'key = "k"\n', {"/torrents/info": [TORRENTS[2]]})
+        quiet = {field["key"]: field["tone"] for field in idle["fields"]}
+        self.assertEqual(quiet["download"], "idle")
+
+
+class NavidromeTests(WidgetTestCase):
+    BODY = ('type = "navidrome"\nurl = "http://nd/api"\nuser = "admin"\n'
+            'token = "tok"\nsalt = "s4lt"\n')
+    ARTISTS = {"subsonic-response": {"status": "ok", "artists": {"index": [
+        {"name": "A", "artist": [{"name": "Aphex Twin", "albumCount": 3},
+                                 {"name": "Autechre", "albumCount": 2}]},
+        {"name": "B", "artist": {"name": "Boards of Canada", "albumCount": 4}},
+    ]}}}
+    PLAYING = {"subsonic-response": {"status": "ok", "nowPlaying": {"entry": [
+        {"title": "Xtal", "artist": "Aphex Twin", "album": "SAW 85-92", "username": "admin"},
+    ]}}}
+    RUNNED = {"/getNowPlaying": PLAYING, "/getArtists": ARTISTS}
+
+    def test_library_and_now_playing(self):
+        seen = []
+        state = self.run_typed(self.BODY, self.RUNNED, seen)
+        self.assertTrue(state["ok"], state.get("error"))
+        self.assertEqual(self.values(state), {"playing": 1, "artists": 3, "albums": 9})
+        self.assertEqual(state["rows"], [{"title": "Aphex Twin — Xtal",
+                                           "meta": "SAW 85-92 · admin"}])
+        # база из url сохраняется, авторизация — token/salt, как в Subsonic
+        self.assertIn("http://nd/api/rest/getNowPlaying?", seen[0].full_url)
+        self.assertIn("t=tok", seen[0].full_url)
+
+    def test_one_artist_in_a_dict_still_counts(self):
+        only = {"subsonic-response": {"status": "ok", "artists": {"index": {
+            "name": "A", "artist": {"name": "Solo", "albumCount": 1}}}}}
+        state = self.run_typed(self.BODY, {"/getNowPlaying": {"subsonic-response": {
+            "status": "ok", "nowPlaying": {}}}, "/getArtists": only})
+        self.assertEqual(self.values(state), {"playing": 0, "artists": 1, "albums": 1})
+        self.assertIsNone(state["rows"])
+
+    def test_empty_library_is_zero_not_crosses(self):
+        empty = {"subsonic-response": {"status": "failed",
+                                      "error": {"code": 70, "message": "Library not found or empty"}}}
+        state = self.run_typed(self.BODY, dict(self.RUNNED, **{"/getArtists": empty}))
+        self.assertTrue(state["ok"], state.get("error"))
+        self.assertEqual(self.values(state)["albums"], 0)
+
+    def test_wrong_token_is_one_short_phrase(self):
+        refused = {"subsonic-response": {"status": "failed",
+                                        "error": {"code": 40, "message": "Wrong username or password"}}}
+        state = self.run_typed(self.BODY, {"/getNowPlaying": refused, "/getArtists": refused})
+        self.assertFalse(state["ok"])
+        self.assertEqual(state["error"], "Access denied: check user, token and salt.")
+        self.assertNotIn("http", state["error"])
+
+    def test_sub_path_in_url_is_kept(self):
+        seen = []
+        state = self.run_typed(self.BODY, self.RUNNED, seen)
+        self.assertTrue(state["ok"], state.get("error"))
+        self.assertIn("http://nd/api/rest/getNowPlaying", seen[0].full_url)

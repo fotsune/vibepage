@@ -29,18 +29,22 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 import socket
 import ssl
 import struct
+import subprocess
 import threading
 import time
 from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from http.cookiejar import CookieJar
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlsplit
-from urllib.request import Request, urlopen
+from urllib.parse import quote, urlencode, urlsplit
+from urllib.request import (HTTPCookieProcessor, HTTPSHandler, Request,
+                             build_opener, urlopen)
 
 from . import thermal
 
@@ -55,6 +59,7 @@ WIDGET_TTL = 10.0
 DEFAULT_TIMEOUT = 4.0
 MAX_WORKERS = 8
 MAX_FIELDS = 4            # сколько полей влезает в карточку
+ROW_LIMIT = 3             # сколько строк списка (очереди) влезает в карточку
 MC_DEFAULT_PORT = 25565
 
 
@@ -123,12 +128,18 @@ def _truthy(value) -> bool:
 # --------------------------------------------------------------------------- #
 
 def _request(url: str, headers: dict | None = None, data: bytes | None = None,
-             timeout: float = DEFAULT_TIMEOUT, insecure: bool = True) -> bytes:
-    """Один GET/POST: любая беда — WidgetFailure с человеческой причиной."""
+             timeout: float = DEFAULT_TIMEOUT, insecure: bool = True,
+             opener=None) -> bytes:
+    """Один GET/POST: любая беда — WidgetFailure с человеческой причиной.
+
+    ``opener`` — для чужих API, которые держат сессию в печеньке (qBittorrent).
+    """
     request = Request(url, headers=headers or {}, data=data)
     context = ssl._create_unverified_context() if insecure else None
-    host = urlsplit(url).netloc or url   # только для логов, в карточку не идёт
     try:
+        if opener is not None:
+            with opener.open(request, timeout=timeout) as response:
+                return response.read(4_000_000)
         with urlopen(request, timeout=timeout, context=context) as response:
             return response.read(4_000_000)
     except HTTPError as error:
@@ -173,6 +184,13 @@ def _number(value) -> int:
         return 0
 
 
+def _as_list(value) -> list:
+    """Одно поле, которое бывает объектом или списком: Subsonic так и отвечает."""
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
+
+
 class Spec:
     """Общее у всех типов: по умолчанию значение как есть и нейтральный цвет."""
 
@@ -192,6 +210,14 @@ class Spec:
 
     def bar(self, values: dict, options: dict | None = None) -> dict | None:
         """Полосочка статуса: ``{"value": 0…1, "tone": …}`` или None."""
+        return None
+
+    def rows(self, values: dict, options: dict | None = None) -> list[dict] | None:
+        """Строки под полями: очередь раздач, что играет сейчас.
+
+        ``[{"title": …, "progress": 0…1 | None, "meta": «42% · 3.1 GB»}]`` —
+        не больше ``ROW_LIMIT`` штук. None — списка у этого типа нет.
+        """
         return None
 
 
@@ -641,6 +667,221 @@ class Watchtower(Spec):
 
 
 # --------------------------------------------------------------------------- #
+# qBittorrent (Web API v2)
+#
+# Раздачи: сколько качается, сколько раздаётся, скорость в обе стороны. Вход —
+# ключ API (заголовок Authorization: Bearer) или логин с паролем (печенька SID,
+# живёт час). enableleechprogress добавляет под поля очередь: у каждой раздачи
+# доля и, если включён enableleechsize, сколько осталось.
+# --------------------------------------------------------------------------- #
+
+QB_TTL = 3600.0
+_QB_SESSIONS: dict[str, tuple[object, float]] = {}
+QB_LEECH_ORDER = {"downloading": 0, "forceddl": 1, "metadl": 2, "forcedmetadl": 3,
+                  "checkingdl": 4, "stalleddl": 5, "queueddl": 6, "pauseddl": 7}
+
+
+def _rate(value) -> str:
+    """Байты в секунду → «1.2 MB/s»; в карточку больше и не влезет."""
+    return _bytes(_number(value), binary=False) + "/s"
+
+
+def _browser_headers(base: str) -> dict:
+    """qBittorrent сверяет Referer и Origin у POST — шлём то же, что слал бы браузер."""
+    return {"Referer": base + "/", "Origin": base}
+
+
+class Qbittorrent(Spec):
+    """Раздачи qBittorrent: leech, download, seed, upload."""
+
+    TITLE = "qBittorrent"
+    FIELDS = (("leech", "leech"), ("download", "download"),
+              ("seed", "seed"), ("upload", "upload"))
+    REQUIRED = ("url",)
+    OPTIONAL = ("username", "password", "key", "enableleechprogress", "enableleechsize",
+                "timeout", "verify_tls")
+
+    def _session(self, base: str, options: dict, timeout: float, insecure: bool):
+        """(opener, заголовки): ключ API — заголовком, иначе вход по паролю."""
+        key = str(options.get("key") or "").strip()
+        if key:
+            return None, {"Authorization": "Bearer " + key}
+        cached = _QB_SESSIONS.get(base)
+        if cached and cached[1] > time.monotonic():
+            return cached[0], {}
+        user, password = str(options.get("username") or ""), str(options.get("password") or "")
+        if not user or not password:
+            raise WidgetFailure("Not configured: need key or username and password")
+        context = ssl._create_unverified_context() if insecure else None
+        opener = build_opener(HTTPCookieProcessor(CookieJar()),
+                              *([HTTPSHandler(context=context)] if context is not None else []))
+        body = urlencode({"username": user, "password": password}).encode("utf-8")
+        try:
+            raw = _request(f"{base}/api/v2/auth/login",
+                           dict({"Content-Type": "application/x-www-form-urlencoded"},
+                                **_browser_headers(base)),
+                           data=body, timeout=timeout, opener=opener)
+        except WidgetFailure as error:
+            if str(error).startswith("Access denied"):   # 401 бывает и от бана IP
+                raise WidgetFailure("Access denied: wrong password, or the address is "
+                                    "banned after failed logins") from error
+            raise
+        answer = raw.decode("utf-8", "replace").strip()
+        if answer and answer != "Ok.":        # «Fails.» — или бан, или пароль не тот
+            raise WidgetFailure("Access denied: check login and password")
+        _QB_SESSIONS[base] = (opener, time.monotonic() + QB_TTL)
+        return opener, {}
+
+    def _torrents(self, base: str, opener, headers: dict, timeout: float, insecure: bool) -> list:
+        raw = _request(f"{base}/api/v2/torrents/info",
+                       dict(headers, Accept="application/json", **_browser_headers(base)),
+                       timeout=timeout, insecure=insecure, opener=opener)
+        torrents = _json(raw, "qBittorrent serves /api/v2")
+        if not isinstance(torrents, list):
+            raise WidgetFailure("Unexpected answer from /api/v2/torrents/info")
+        return torrents
+
+    def fetch(self, options: dict) -> dict:
+        base = str(options.get("url", "")).rstrip("/")
+        timeout = float(options.get("timeout", DEFAULT_TIMEOUT))
+        insecure = not _truthy(options.get("verify_tls", False))
+        opener, headers = self._session(base, options, timeout, insecure)
+        try:
+            torrents = self._torrents(base, opener, headers, timeout, insecure)
+        except WidgetFailure:
+            if headers:                        # ключ не стареет: повторять нечем
+                raise
+            _QB_SESSIONS.pop(base, None)       # печенька протухла — входим ещё раз
+            opener, headers = self._session(base, options, timeout, insecure)
+            torrents = self._torrents(base, opener, headers, timeout, insecure)
+        done = sum(1 for torrent in torrents if float(torrent.get("progress") or 0) >= 1)
+        return {
+            "leech": len(torrents) - done,
+            "download": sum(_number(torrent.get("dlspeed")) for torrent in torrents),
+            "seed": done,
+            "upload": sum(_number(torrent.get("upspeed")) for torrent in torrents),
+            "_torrents": torrents,          # сырьё для строк, на провод не идёт
+        }
+
+    def show(self, key: str, value, options: dict | None = None):
+        return _rate(value) if key in ("download", "upload") else value
+
+    def tone(self, key: str, value, options: dict | None = None) -> str:
+        if key in ("download", "upload"):
+            return "good" if _number(value) else "idle"
+        return "warn" if key == "leech" and _number(value) else "idle"
+
+    def rows(self, values: dict, options: dict | None = None) -> list[dict] | None:
+        """Очередь под полями — только если в конфиге enableleechprogress."""
+        options = options or {}
+        if not _truthy(options.get("enableleechprogress")):
+            return None
+        with_size = _truthy(options.get("enableleechsize"))
+        leeches = [torrent for torrent in values.get("_torrents") or []
+                   if float(torrent.get("progress") or 0) < 1]
+        leeches.sort(key=lambda torrent: (QB_LEECH_ORDER.get(
+            str(torrent.get("state") or "").lower(), len(QB_LEECH_ORDER)),
+            -float(torrent.get("progress") or 0)))
+        rows = []
+        for torrent in leeches[:ROW_LIMIT]:
+            progress = float(torrent.get("progress") or 0)
+            meta = f"{progress * 100:.0f}%"
+            left = _number(torrent.get("amount_left"))
+            if with_size and left:
+                meta += " · " + _bytes(left, binary=True)
+            rows.append({"title": str(torrent.get("name") or "torrent"),
+                         "progress": progress, "meta": meta})
+        return rows
+
+
+# --------------------------------------------------------------------------- #
+# Navidrome (Subsonic API)
+#
+# token = md5(пароль + salt), salt — свой: так пароль по сети не ходит.
+# Показывает, что играет сейчас, и размер медиатеки (артисты и альбомы
+# из getArtists — одного похода хватает на оба счётчика).
+# --------------------------------------------------------------------------- #
+
+SUBSONIC_VERSION = "1.16.1"
+SUBSONIC_ERRORS = {
+    10: "Subsonic API version is not supported",
+    20: "Password or token is required",
+    40: "Access denied: check user, token and salt",
+    41: "Token and salt are required",
+    50: "Access denied: user is not authorized",
+    70: "Library is empty",
+}
+EMPTY_LIBRARY = 70          # getArtists на пустой медиатеке — не ошибка карточки
+
+
+class SubsonicFailure(WidgetFailure):
+    """Отказ Subsonic-API вместе с кодом: по коду и решается, ошибка это или пусто."""
+
+    def __init__(self, detail: str, code: int):
+        super().__init__(detail)
+        self.code = code
+
+
+class Navidrome(Spec):
+    """Медиатека Navidrome и то, что играет прямо сейчас."""
+
+    TITLE = "Navidrome"
+    FIELDS = (("playing", "playing"), ("artists", "artists"), ("albums", "albums"))
+    REQUIRED = ("url", "user", "token", "salt")
+    OPTIONAL = ("timeout", "verify_tls")
+
+    def _call(self, base: str, endpoint: str, options: dict,
+              timeout: float, insecure: bool) -> dict:
+        query = urlencode({"u": str(options.get("user", "")),
+                           "t": str(options.get("token", "")),
+                           "s": str(options.get("salt", "")),
+                           "v": SUBSONIC_VERSION, "c": "homepage", "f": "json"})
+        raw = _request(f"{base}/rest/{endpoint}?{query}", {"Accept": "application/json"},
+                       timeout=timeout, insecure=insecure)
+        payload = _json(raw, "if Navidrome runs under a sub-path, put it in url")
+        answer = payload.get("subsonic-response") if isinstance(payload, dict) else None
+        if not isinstance(answer, dict):
+            raise WidgetFailure("Unexpected answer from the Subsonic API")
+        if str(answer.get("status") or "").lower() == "failed":
+            code = _number((answer.get("error") or {}).get("code"))
+            raise SubsonicFailure(SUBSONIC_ERRORS.get(code, f"Subsonic API error {code}"), code)
+        return answer
+
+    def fetch(self, options: dict) -> dict:
+        base = str(options.get("url", "")).rstrip("/")
+        timeout = float(options.get("timeout", DEFAULT_TIMEOUT))
+        insecure = not _truthy(options.get("verify_tls", False))
+        playing = _as_list((self._call(base, "getNowPlaying", options, timeout, insecure)
+                            .get("nowPlaying") or {}).get("entry"))
+        try:
+            library = self._call(base, "getArtists", options, timeout, insecure).get("artists") or {}
+        except SubsonicFailure as error:
+            if error.code != EMPTY_LIBRARY:      # пустая медиатека — нули, а не кресты
+                raise
+            library = {}
+        people = [artist for index in _as_list(library.get("index"))
+                  for artist in _as_list(index.get("artist"))]
+        return {"playing": len(playing), "artists": len(people),
+                "albums": sum(_number(artist.get("albumCount")) for artist in people),
+                "_tracks": playing}          # сырьё для строк
+
+    def tone(self, key: str, value, options: dict | None = None) -> str:
+        return "good" if key == "playing" and _number(value) else "idle"
+
+    def rows(self, values: dict, options: dict | None = None) -> list[dict] | None:
+        """Что играет: «Artist — Title» и под ним альбом и слушатель."""
+        rows = []
+        for entry in values.get("_tracks") or []:
+            title = str(entry.get("title") or "Track")
+            artist = str(entry.get("artist") or "").strip()
+            meta = [part for part in (str(entry.get("album") or "").strip(),
+                                      str(entry.get("username") or "").strip()) if part]
+            rows.append({"title": f"{artist} — {title}" if artist else title,
+                         "progress": None, "meta": " · ".join(meta)})
+        return rows[:ROW_LIMIT]
+
+
+# --------------------------------------------------------------------------- #
 # сам хост: cpu (загрузка, температура, аптайм) и ram
 # --------------------------------------------------------------------------- #
 
@@ -926,7 +1167,7 @@ class Disk(Spec):
 
 REGISTRY = {type(spec).__name__.lower(): spec for spec in (
     Portainer(), AdGuard(), Npm(), Minecraft(), ChangeDetectionIo(), UptimeKuma(), YourSpotify(), Watchtower(),
-    Cpu(), Ram(), Disk(),
+    Qbittorrent(), Navidrome(), Cpu(), Ram(), Disk(),
 )}
 
 # sysinfo разделился на cpu и ram; старые имена в конфиге продолжают работать
@@ -1085,7 +1326,7 @@ def _failed(widget, spec, stamp: float, detail: str) -> dict:
     return {"ok": False, "name": widget.name, "type": widget.type, "at": stamp,
             "error": _sentence(detail), "caption": caption_for(widget),
             "fields": _crossed(widget, spec) if spec is not None else [],
-            "bar": None}
+            "bar": None, "rows": None}
 
 
 def _render_fields(widget, spec, values: dict) -> list[dict]:
@@ -1110,6 +1351,30 @@ def _safe_bar(spec, values: dict, options: dict) -> dict | None:
         return None
 
 
+def _safe_rows(spec, values: dict, options: dict) -> list[dict] | None:
+    """Строки тоже: мусор в чужом ответе — это просто отсутствие строк."""
+    try:
+        rows = spec.rows(values, options)
+    except Exception:  # noqa: BLE001
+        return None
+    if not rows:
+        return None
+    clean = []
+    for row in list(rows)[:ROW_LIMIT]:
+        if not isinstance(row, dict):
+            continue
+        item = {"title": str(row.get("title") or ""),
+                "meta": str(row.get("meta") or "")}
+        progress = row.get("progress")
+        if progress is not None:
+            try:
+                item["progress"] = round(max(0.0, min(1.0, float(progress))), 4)
+            except (TypeError, ValueError):
+                item["progress"] = None
+        clean.append(item)
+    return clean or None
+
+
 def run_widget(widget) -> dict:
     """Один поход в чужой API. Никогда не бросает: ошибка — это тоже состояние."""
     stamp = time.time()
@@ -1131,7 +1396,8 @@ def run_widget(widget) -> dict:
         return _failed(widget, spec, stamp, "Widget returned no data")
     return {"ok": True, "name": widget.name, "type": widget.type, "title": spec.TITLE,
             "caption": caption_for(widget), "fields": _render_fields(widget, spec, values),
-            "values": _plain(values), "bar": _safe_bar(spec, values, widget.options), "at": stamp}
+            "values": _plain(values), "bar": _safe_bar(spec, values, widget.options),
+            "rows": _safe_rows(spec, values, widget.options), "at": stamp}
 
 
 # --------------------------------------------------------------------------- #
@@ -1246,16 +1512,22 @@ def _remote_widget(widget, stamp: float) -> dict:
             "type": widget.type or str(payload.get("type") or ""),
             "title": spec.TITLE if spec is not None else str(payload.get("title") or widget.name),
             "caption": caption_for(widget) or payload.get("caption"),
-            "fields": fields, "values": _plain(values), "bar": bar, "at": stamp,
+            "fields": fields, "values": _plain(values), "bar": bar,
+            "rows": payload.get("rows") or None, "at": stamp,
             "remote": remote_host(widget.options)}
 
 
 # --------------------------------------------------------------------------- #
-# ping
+# ping: ICMP для «host», TCP для «host:port» (см. ping() ниже)
 # --------------------------------------------------------------------------- #
 
-def split_target(target: str, fallback_port: int | None = None) -> tuple[str, int]:
-    """``host``, ``host:port`` и ``http(s)://host:port/путь`` → (host, port)."""
+def split_target(target: str, fallback_port: int | None = None) -> tuple[str, int | None]:
+    """``host`` → (host, None), ``host:port`` → (host, port), URL → (host, 80 или 443).
+
+    У ping отсутствие порта — это ICMP («жив ли хост»), у minecraft — его
+    собственный порт по умолчанию: поэтому fallback_port задаёт вызывающий.
+    Схема выбирает способ проверки вручную: ``icmp://host`` и ``tcp://host``.
+    """
     text = (target or "").strip()
     if not text:
         raise ValueError("Empty target")
@@ -1269,46 +1541,143 @@ def split_target(target: str, fallback_port: int | None = None) -> tuple[str, in
         port = parts.port
     except ValueError as error:
         raise ValueError(f"Cannot parse port in {target!r}") from error
-    if port is None:
-        if parts.scheme == "https":
-            port = 443
-        elif parts.scheme == "http":
-            port = 80
-        else:
-            port = fallback_port or 80
-    return host, port
+    if port is not None:
+        return host, port
+    scheme = (parts.scheme or "").lower()
+    if scheme == "icmp":                 # явно «проверь ICMP», даже если порт не написан
+        return host, None
+    if scheme == "https":
+        return host, 443
+    if scheme in ("http", "tcp"):        # tcp://host — старый смысл «порт 80»
+        return host, 80
+    return host, fallback_port           # просто «host»: ping — ICMP, minecraft — 25565
 
 
-def ping(target: str, timeout: float = 2.0) -> dict:
-    """TCP-connect вместо ICMP: работает без root и внутри контейнера."""
+# ICMP-вывод: с настройкой локали в игру не вступаем, но время и TTL ищем и
+# по-русски («время<1мс»), а TTL — единственное, что не переводится.
+ICMP_TIME = re.compile(r"(?:time|время)\s*[=<]\s*(\d+(?:[.,]\d+)?)", re.I)
+ICMP_TTL = re.compile(r"\bttl=\d+", re.I)
+
+
+def icmp_command(host: str, timeout: float) -> list[str]:
+    """Одна посылка: у Windows свои буквы, у iputils/busybox/macOS — ``-c 1``."""
+    if os.name == "nt":
+        return ["ping", "-n", "1", "-w", str(max(1, int(timeout * 1000))), host]
+    return ["ping", "-c", "1", host]
+
+
+def icmp_text(raw: bytes) -> str:
+    """Вывод ping в той кодировке, в которой он читается (русская Windows — cp866)."""
+    fallback = ""
+    for codec in ("utf-8", "cp866", "cp1251", "latin-1"):
+        text = raw.decode(codec, "replace")
+        if ICMP_TIME.search(text):     # TTL латиница в любой кодировке, время — нет
+            return text
+        if not fallback and ICMP_TTL.search(text):
+            fallback = text
+    return fallback or raw.decode("utf-8", "replace")
+
+
+_ICMP_TOOL: bool | None = None   # есть ли системный ping: один ответ на весь процесс
+
+
+def icmp_available() -> bool:
+    """Есть ли в системе ping: без него точка идёт по TCP, как раньше."""
+    global _ICMP_TOOL
+    if _ICMP_TOOL is None:
+        try:
+            subprocess.run(icmp_command("127.0.0.1", 1), capture_output=True, timeout=5)
+            _ICMP_TOOL = True
+        except (OSError, subprocess.SubprocessError):
+            _ICMP_TOOL = False
+    return _ICMP_TOOL
+
+
+def icmp(host: str, timeout: float = 2.0) -> dict | None:
+    """Одна ICMP-посылка через системный ping. None — самого ping в системе нет."""
     try:
-        host, port = split_target(target)
-    except ValueError as error:
-        return {"state": "down", "ms": None, "error": str(error)}
+        done = subprocess.run(icmp_command(host, timeout), capture_output=True,
+                              timeout=timeout + 1.0)   # ответа нет — убиваем и всё
+    except (OSError, subprocess.SubprocessError):
+        return None
+    text = icmp_text((done.stdout or b"") + (done.stderr or b""))
+    if ICMP_TTL.search(text):
+        found = ICMP_TIME.search(text)
+        ms = int(float(found.group(1).replace(",", "."))) if found else None
+        return {"state": "ok" if ms is None or ms <= PING_OK_MS else "slow",
+                "ms": ms, "target": host, "via": "icmp"}
+    return {"state": "down", "ms": None, "target": host, "via": "icmp", "error": "No response"}
+
+
+def _tcp(host: str, port: int, timeout: float) -> dict:
+    """TCP-connect: жив ли сервис на этом порту (и заодно жив ли хост)."""
     started = time.perf_counter()
     try:
         with socket.create_connection((host, port), timeout=timeout):
             ms = int((time.perf_counter() - started) * 1000)
     except (OSError, ValueError) as error:
-        return {"state": "down", "ms": None, "target": f"{host}:{port}", "error": str(error) or "No response"}
-    return {"state": "ok" if ms <= PING_OK_MS else "slow", "ms": ms, "target": f"{host}:{port}"}
+        return {"state": "down", "ms": None, "target": f"{host}:{port}", "via": "tcp",
+                "error": str(error) or "No response"}
+    return {"state": "ok" if ms <= PING_OK_MS else "slow", "ms": ms,
+            "target": f"{host}:{port}", "via": "tcp"}
+
+
+def ping(target: str, timeout: float = 2.0) -> dict:
+    """Точка статуса: «host» — ICMP, «host:port» — TCP.
+
+    Без порта спрашиваем ICMP через системный ping: хост без веб-сервера
+    (NAS, роутер, малина) жив, даже если ни один порт не открыт. Раньше здесь
+    всегда стучались в 80-й, и такие хосты краснели.
+
+    Если ICMP промолчал — пробуем 80-й и 443-й: часть хостов прячет ICMP
+    (обычная настройка Windows-файрвола), а точку на работающей машине
+    красной видеть незачем. Совсем без системного ping (голый контейнер)
+    всё идёт по TCP, как раньше.
+
+    С портом — по-прежнему TCP: это проверка сервиса, а не хоста.
+    ``icmp://host`` и ``tcp://host[:port]`` выбирают способ явно.
+    """
+    try:
+        host, port = split_target(target)
+    except ValueError as error:
+        return {"state": "down", "ms": None, "error": str(error)}
+    if port is not None:
+        return _tcp(host, port, timeout)
+    answer = icmp(host, timeout)
+    if answer is not None and answer["state"] != "down":
+        return answer
+    for probe_port in (80, 443):
+        probe = _tcp(host, probe_port, min(1.0, timeout))
+        if probe["state"] != "down":
+            return probe
+    return answer if answer is not None else _tcp(host, 80, timeout)
 
 
 PING_WORDS = {"ok": "Up", "slow": "Slow", "down": "Down"}
+PING_VIA = {"icmp": "ICMP", "tcp": "TCP"}
 
 
 def ping_title(state) -> str:
     """Подсказка к точке пинга без адреса: клиенту незачем знать, куда мы стучимся.
 
-    По-английски и без хоста: «Ping: Up · 1 ms». Те же слова в static/js/app.js."""
-    word = PING_WORDS.get((state or {}).get("state") or "unknown", "Unknown")
-    ms = (state or {}).get("ms")
-    return "Ping: " + word + (f" · {ms} ms" if ms is not None else "")
+    По-английски и без хоста: «Ping: Up · 1 ms · ICMP». Способ проверки (ICMP
+    или TCP) назван, потому что он и объясняет цвет точки.
+    Те же слова в static/js/app.js."""
+    state = state or {}
+    word = PING_WORDS.get(state.get("state") or "unknown", "Unknown")
+    ms = state.get("ms")
+    via = PING_VIA.get(state.get("via") or "")
+    return ("Ping: " + word + (f" · {ms} ms" if ms is not None else "")
+            + (f" · {via}" if via else ""))
 
 
 def wire_ping(state: dict) -> dict:
-    """Только состояние и задержка — ни адреса, ни текста ошибки с хостом."""
-    return {"state": (state or {}).get("state") or "unknown", "ms": (state or {}).get("ms")}
+    """Только состояние, задержка и способ — ни адреса, ни текста ошибки с хостом."""
+    state = state or {}
+    answer = {"state": state.get("state") or "unknown", "ms": state.get("ms")}
+    if state.get("via"):
+        answer["via"] = state["via"]
+    return answer
 
 
 # адрес соседа знает только сервер: клиенту он не нужен ни в цифрах, ни в подсказке
@@ -1334,6 +1703,7 @@ def clear_cache() -> None:
         _CACHE.clear()
         _KEY_LOCKS.clear()
         _NPM_TOKENS.clear()
+        _QB_SESSIONS.clear()
 
 
 def _peek(key: str) -> Entry | None:
