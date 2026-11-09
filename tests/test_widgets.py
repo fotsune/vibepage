@@ -954,6 +954,17 @@ class RemoteWidgetTestCase(unittest.TestCase):
         self.assertEqual(state["caption"], "NAS")       # name с этой стороны главнее
         self.assertAlmostEqual(state["bar"]["value"], 0.6, places=2)
 
+    def test_state_has_no_address_even_when_the_neighbour_is_down(self):
+        widget = self._widget(name="NAS")
+        self._run(widget, self._answer())
+        reason = URLError("timed out talking to http://10.0.0.2:24556/api/widget?id=disk")
+        with mock.patch.object(widgets, "urlopen", side_effect=reason):
+            widgets.clear_cache()
+            state = widgets.run_widget(widget)
+        self.assertFalse(state["ok"])
+        self.assertNotIn("10.0.0.2", json.dumps(state))
+        self.assertNotIn("http", json.dumps(state))
+
     def test_failure_speaks_of_the_cause_and_not_the_address(self):
         widget = self._widget(name="NAS")
         reason = URLError("timed out talking to http://10.0.0.2:24556/api/widget?id=disk")
@@ -978,6 +989,32 @@ class RemoteWidgetTestCase(unittest.TestCase):
         self.assertTrue(state["ok"], state.get("error"))
         self.assertTrue(seen[0].endswith("id=missing_one"))
         self.assertTrue(seen[1].endswith("id=cpu"))     # второй заход — по типу
+
+    def test_wire_never_carries_the_neighbour_address(self):
+        # сервер помнит, откуда цифры, а клиенту это знать незачем
+        state = self._run(self._widget(name="NAS"), self._answer())
+        self.assertIn("remote", state)
+        self.assertNotIn("remote", widgets.wire_widget(state))
+
+    def test_answer_to_a_neighbour_carries_no_address_either(self):
+        with mock.patch.object(widgets, "urlopen", fake_neighbour(self._answer())):
+            answer = widgets.remote_payload(self._widget())
+        self.assertEqual(answer["id"], "far")         # id — как спросили, name — как на карточке
+        self.assertNotIn("192.168.0.112", json.dumps(answer))
+
+    def test_state_and_page_drop_the_address(self):
+        site = Site(system=System())
+        site.groups[group_key("Lab")] = Group(name="Lab", priority=1)
+        site.widgets["far"] = self._widget(name="far", external="disk")
+        site.services.append(Service(name="Box", group="Lab", group_key="lab", widgets=["far"]))
+        with mock.patch.object(widgets, "urlopen", fake_neighbour(self._answer())):
+            live = widgets.snapshot(site, online=True)
+        page = build_page(site, is_local=False)          # страница берёт тот же снимок из кэша
+        widgets.clear_cache()
+        for text in (json.dumps(live), json.dumps(page.get("state") or {})):
+            self.assertIn("widgets", text)
+            self.assertNotIn("192.168.0.112", text)
+            self.assertNotIn("24556", text)
 
     def test_neighbour_address_gets_a_scheme(self):
         self.assertEqual(widgets.remote_host({"host": "192.168.0.112:24556"}), "http://192.168.0.112:24556")

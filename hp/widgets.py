@@ -1206,7 +1206,8 @@ def remote_payload(widget) -> dict:
     к источнику, а не два.
     """
     answer = _cached(f"widget|{widget.name.casefold()}", lambda: run_widget(widget), WIDGET_TTL).value
-    return dict(answer, id=widget.name)      # name — как на карточке, id — как спросили
+    # соседу тоже без адреса: он не должен знать, откуда мы берём эти цифры
+    return dict(wire_widget(answer), id=widget.name)   # name — как на карточке, id — как спросили
 
 
 def _fetch_remote(widget) -> dict:
@@ -1308,6 +1309,15 @@ def ping_title(state) -> str:
 def wire_ping(state: dict) -> dict:
     """Только состояние и задержка — ни адреса, ни текста ошибки с хостом."""
     return {"state": (state or {}).get("state") or "unknown", "ms": (state or {}).get("ms")}
+
+
+# адрес соседа знает только сервер: клиенту он не нужен ни в цифрах, ни в подсказке
+PRIVATE_KEYS = ("remote",)
+
+
+def wire_widget(state: dict) -> dict:
+    """Виджет по проводу: без того, что выдаёт, куда ходил сервер."""
+    return {key: value for key, value in (state or {}).items() if key not in PRIVATE_KEYS}
 
 
 # --------------------------------------------------------------------------- #
@@ -1427,7 +1437,7 @@ def snapshot(site, online: bool = True) -> dict:
                 # пинг отдаём без адреса: клиент не должен знать, куда мы стучимся
                 card["ping"] = wire_ping(entry.value)
                 card["ping_at"] = round(entry.at, 3)
-        live = [dict(entry.value) for entry in (_peek(key) for key, _p, _t, _n in item["widgets"])
+        live = [wire_widget(entry.value) for entry in (_peek(key) for key, _p, _t, _n in item["widgets"])
                 if entry is not None]
         if live:
             card["widgets"] = live
